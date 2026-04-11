@@ -1,0 +1,42 @@
+{
+  "name": "webns",
+  "version": "1.0.0",
+  "description": "Multi-chain naming service MCP server - SuiNS, ENS, SNS, Aptos Names, Basenames",
+  "type": "module",
+  "main": "index.mjs",
+  "private": true,
+  "scripts": {
+    "start": "node index.mjs",
+    "dev": "node --watch index.mjs"
+  },
+  "keywords": [
+    "mcp",
+    "blockchain",
+    "naming",
+    "ens",
+    "suins",
+    "sns",
+    "aptos",
+    "basenames",
+    "web3",
+    "identity"
+  ],
+  "author": "ossybadman",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ossybadman/WebNS"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@mysten/kiosk": "^1.2.0",
+    "@mysten/sui": "^2.14.1",
+    "@mysten/suins": "^1.0.2",
+    "viem": "^2.31.0",
+    "@ensdomains/ensjs": "^4.0.4",
+    "@bonfida/spl-name-service": "^3.0.7",
+    "@solana/web3.js": "^1.98.0",
+    "@aptos-labs/ts-sdk": "^5.2.1",
+    "zod": "^4.3.6"
+  }
+}
