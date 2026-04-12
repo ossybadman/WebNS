@@ -11,7 +11,7 @@ Multi-chain naming service MCP server. Resolves, registers, and manages blockcha
 If your client supports adding a remote MCP server:
 
 - **Server Name:** `webns`
-- **URL:** `https://webns-mcp-production.up.railway.app/mcp`
+- **URL:** `https://webns-production.up.railway.app/mcp`
 
 **Option B: Using Cursor**
 
@@ -22,7 +22,7 @@ Add to your MCP configuration file:
   "mcpServers": {
     "webns": {
       "transport": "http",
-      "url": "https://webns-mcp-production.up.railway.app/mcp"
+      "url": "https://webns-production.up.railway.app/mcp"
     }
   }
 }
@@ -33,7 +33,7 @@ Add to your MCP configuration file:
 Run this command in your terminal:
 
 ```bash
-claude mcp add --transport http webns https://webns-mcp-production.up.railway.app/mcp
+claude mcp add --transport http webns https://webns-production.up.railway.app/mcp
 ```
 
 ---
