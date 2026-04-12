@@ -4,54 +4,37 @@ Multi-chain naming service MCP server. Resolves, registers, and manages blockcha
 
 **62 tools** across SuiNS (.sui), ENS (.eth), SNS (.sol), Aptos Names (.apt), Basenames (.base.eth), and cross-chain utilities.
 
-## Setup
+## Integration
 
-```bash
-git clone https://github.com/ossybadman/WebNS
-cd WebNS
-npm install
-npm start
-```
+**Option A: Direct Integration (Remote MCP)**
 
-Server runs on port 3000 by default.
+If your client supports adding a remote MCP server:
 
-## Connect to Claude
+- **Server Name:** `webns`
+- **URL:** `https://webns-mcp-production.up.railway.app/mcp`
 
-Add to your Claude MCP config:
+**Option B: Using Cursor**
+
+Add to your MCP configuration file:
 
 ```json
 {
   "mcpServers": {
     "webns": {
-      "type": "http",
-      "url": "http://localhost:3000/mcp"
-    }
-  }
-}
-```
-
-For the hosted endpoint:
-```json
-{
-  "mcpServers": {
-    "webns": {
-      "type": "http",
+      "transport": "http",
       "url": "https://webns-mcp-production.up.railway.app/mcp"
     }
   }
 }
 ```
 
-## Environment Variables
+**Option C: Using Claude Code**
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3000` | Server port |
-| `ETH_RPC_URL` | `https://cloudflare-eth.com` | Ethereum RPC (Alchemy/Infura recommended for production) |
-| `SOL_RPC_URL` | Solana mainnet-beta | Solana RPC (Helius/QuickNode recommended for production) |
-| `BASE_RPC_URL` | `https://mainnet.base.org` | Base L2 RPC |
+Run this command in your terminal:
 
-> **Note:** Public RPCs have rate limits. For production use, set `ETH_RPC_URL` and `SOL_RPC_URL` to private endpoints.
+```bash
+claude mcp add --transport http webns https://webns-mcp-production.up.railway.app/mcp
+```
 
 ---
 
@@ -223,23 +206,6 @@ ens_build_register_tx: { "name": "myname", "owner": "0xYourAddress", "secret": "
 ```
 
 ---
-
-## Architecture
-
-```
-webns/
-├── index.mjs           # Entry point — registers all chain modules
-├── lib/
-│   ├── transport.mjs   # StreamableHTTP + session handling
-│   └── helpers.mjs     # mcpResponse(), detectChainFromName()
-└── chains/
-    ├── sui.mjs         # SuiNS (.sui)     — 17 tools
-    ├── ens.mjs         # ENS (.eth)       — 13 tools
-    ├── sol.mjs         # SNS (.sol)       — 10 tools
-    ├── apt.mjs         # Aptos Names (.apt) — 10 tools
-    ├── base.mjs        # Basenames (.base.eth) — 10 tools
-    └── cross.mjs       # Cross-chain      —  2 tools
-```
 
 ## License
 
