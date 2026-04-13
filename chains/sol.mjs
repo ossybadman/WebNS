@@ -48,6 +48,21 @@ const RECORD_KEYS = {
     backpack: Record.Backpack,
 };
 
+async function withRetry(fn, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await fn();
+        } catch (e) {
+            const is429 = e.message?.includes('429') || e.message?.toLowerCase().includes('too many requests');
+            if (is429 && i < retries - 1) {
+                await new Promise(r => setTimeout(r, 500 * 2 ** i)); // 500ms → 1s → 2s
+            } else {
+                throw e;
+            }
+        }
+    }
+}
+
 /**
  * Register all SNS tools with the MCP server
  * @param {McpServer} server - The MCP server instance
@@ -84,7 +99,7 @@ export function registerSolTools(server) {
         async ({ address }) => {
             try {
                 const pubkey = new PublicKey(address);
-                const domains = await getAllDomains(connection, pubkey);
+                const domains = await withRetry(() => getAllDomains(connection, pubkey));
 
                 if (!domains || domains.length === 0) {
                     return mcpResponse({ error: `No .sol domains found for "${address}"` });
@@ -94,7 +109,7 @@ export function registerSolTools(server) {
                 const names = await Promise.all(
                     domains.map(async (domainKey) => {
                         try {
-                            return await reverseLookup(connection, domainKey);
+                            return await withRetry(() => reverseLookup(connection, domainKey));
                         } catch {
                             return null;
                         }
