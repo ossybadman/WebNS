@@ -30,7 +30,7 @@ import {
 import { mcpResponse } from '../lib/helpers.mjs';
 
 // Initialize Solana connection
-const rpcUrl = process.env.SOL_RPC_URL || clusterApiUrl('mainnet-beta');
+const rpcUrl = process.env.SOLANA_RPC_URL || process.env.SOL_RPC_URL || clusterApiUrl('mainnet-beta');
 const connection = new Connection(rpcUrl, 'confirmed');
 
 // SNS record types

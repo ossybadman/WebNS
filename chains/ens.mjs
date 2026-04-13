@@ -170,7 +170,7 @@ const REVERSE_REGISTRAR_ABI = [
 ];
 
 // Initialize viem client
-const rpcUrl = process.env.ETH_RPC_URL || 'https://cloudflare-eth.com';
+const rpcUrl = process.env.ETHEREUM_RPC_URL || process.env.ETH_RPC_URL || 'https://cloudflare-eth.com';
 const publicClient = createPublicClient({
     chain: mainnet,
     transport: http(rpcUrl),
