@@ -17,9 +17,6 @@ import {
 } from '@solana/web3.js';
 import {
     resolve,
-    reverseLookup,
-    getAllDomains,
-    getFavoriteDomain,
     getDomainKeySync,
     getRecordV2,
     Record,
@@ -48,19 +45,13 @@ const RECORD_KEYS = {
     backpack: Record.Backpack,
 };
 
-async function withRetry(fn, retries = 3) {
-    for (let i = 0; i < retries; i++) {
-        try {
-            return await fn();
-        } catch (e) {
-            const is429 = e.message?.includes('429') || e.message?.toLowerCase().includes('too many requests');
-            if (is429 && i < retries - 1) {
-                await new Promise(r => setTimeout(r, 500 * 2 ** i)); // 500ms → 1s → 2s
-            } else {
-                throw e;
-            }
-        }
-    }
+const BONFIDA_PROXY = 'https://sns-sdk-proxy.bonfida.workers.dev';
+
+async function proxyFetch(path) {
+    const res = await fetch(`${BONFIDA_PROXY}${path}`);
+    const json = await res.json();
+    if (json.s !== 'ok') throw new Error(json.result || 'Proxy error');
+    return json.result;
 }
 
 /**
@@ -75,18 +66,16 @@ export function registerSolTools(server) {
         { name: z.string().describe('The .sol name to resolve e.g. bonfida.sol') },
         async ({ name }) => {
             try {
-                // Remove .sol suffix if present
                 const domain = name.toLowerCase().replace(/\.sol$/, '');
+                const address = await proxyFetch(`/resolve/${domain}`);
                 const { pubkey } = getDomainKeySync(domain);
-                const owner = await resolve(connection, domain);
-
                 return mcpResponse({
                     name: `${domain}.sol`,
-                    address: owner.toBase58(),
+                    address,
                     domainKey: pubkey.toBase58(),
                 });
             } catch (e) {
-                if (e.message?.includes('Invalid name account provided')) {
+                if (e.message?.includes('Domain not found') || e.message?.includes('Invalid name account')) {
                     return mcpResponse({ error: `Name "${name}" not found` });
                 }
                 return mcpResponse({ error: e.message });
@@ -98,30 +87,15 @@ export function registerSolTools(server) {
         { address: z.string().describe('The Solana wallet address to look up') },
         async ({ address }) => {
             try {
-                const pubkey = new PublicKey(address);
-                const domains = await withRetry(() => getAllDomains(connection, pubkey));
-
-                if (!domains || domains.length === 0) {
+                const result = await proxyFetch(`/reverse-lookup/${address}`);
+                const nameList = (Array.isArray(result) ? result : [result]).filter(Boolean);
+                if (nameList.length === 0) {
                     return mcpResponse({ error: `No .sol domains found for "${address}"` });
                 }
-
-                // Get the reverse name for each domain
-                const names = await Promise.all(
-                    domains.map(async (domainKey) => {
-                        try {
-                            return await withRetry(() => reverseLookup(connection, domainKey));
-                        } catch {
-                            return null;
-                        }
-                    })
-                );
-
-                const validNames = names.filter(Boolean).map(n => `${n}.sol`);
-
                 return mcpResponse({
                     address,
-                    names: validNames,
-                    count: validNames.length,
+                    names: nameList.map(n => `${n}.sol`),
+                    count: nameList.length,
                 });
             } catch (e) { return mcpResponse({ error: e.message }); }
         });
@@ -193,20 +167,15 @@ export function registerSolTools(server) {
         { address: z.string().describe('The Solana wallet address') },
         async ({ address }) => {
             try {
-                const pubkey = new PublicKey(address);
-                const favorite = await getFavoriteDomain(connection, pubkey);
-
-                if (!favorite || !favorite.reverse) {
-                    return mcpResponse({ error: `No favorite domain set for "${address}"` });
-                }
-
+                const domain = await proxyFetch(`/favorite-domain/${address}`);
+                const { pubkey } = getDomainKeySync(domain);
                 return mcpResponse({
                     address,
-                    favoriteDomain: `${favorite.reverse}.sol`,
-                    domainKey: favorite.domain.toBase58(),
+                    favoriteDomain: `${domain}.sol`,
+                    domainKey: pubkey.toBase58(),
                 });
             } catch (e) {
-                if (e.message?.includes('Favourite domain not found')) {
+                if (e.message?.includes('favourite') || e.message?.includes('Favourite') || e.message?.includes('not found')) {
                     return mcpResponse({ error: `No favorite domain set for "${address}"` });
                 }
                 return mcpResponse({ error: e.message });
@@ -218,40 +187,15 @@ export function registerSolTools(server) {
         { address: z.string().describe('The Solana wallet address') },
         async ({ address }) => {
             try {
-                const pubkey = new PublicKey(address);
-                const domainKeys = await getAllDomains(connection, pubkey);
-
-                if (!domainKeys || domainKeys.length === 0) {
-                    return mcpResponse({
-                        address,
-                        domains: [],
-                        count: 0,
-                    });
+                const names = await proxyFetch(`/domains/${address}`);
+                if (!names || names.length === 0) {
+                    return mcpResponse({ address, domains: [], count: 0 });
                 }
-
-                // Reverse lookup each domain
-                const domains = await Promise.all(
-                    domainKeys.map(async (key) => {
-                        try {
-                            const name = await reverseLookup(connection, key);
-                            return {
-                                name: `${name}.sol`,
-                                domainKey: key.toBase58(),
-                            };
-                        } catch {
-                            return {
-                                name: null,
-                                domainKey: key.toBase58(),
-                            };
-                        }
-                    })
-                );
-
-                return mcpResponse({
-                    address,
-                    domains: domains.filter(d => d.name),
-                    count: domains.filter(d => d.name).length,
-                });
+                const domains = names.map(n => ({
+                    name: `${n}.sol`,
+                    domainKey: getDomainKeySync(n).pubkey.toBase58(),
+                }));
+                return mcpResponse({ address, domains, count: domains.length });
             } catch (e) { return mcpResponse({ error: e.message }); }
         });
 
