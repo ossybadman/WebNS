@@ -7,7 +7,7 @@
  */
 
 import { z } from 'zod';
-import { mcpResponse, detectChainFromName } from '../lib/helpers.mjs';
+import { mcpResponse, mcpErrorResponse, detectChainFromName } from '../lib/helpers.mjs';
 
 
 /**
@@ -24,10 +24,7 @@ export function registerCrossChainTools(server) {
                 const chain = detectChainFromName(name);
 
                 if (!chain) {
-                    return mcpResponse({
-                        error: `Unknown TLD. Supported: .sui, .eth, .sol, .apt, .base.eth`,
-                        name,
-                    });
+                    return mcpResponse({ error: { code: 'UNSUPPORTED_CHAIN', message: `Unknown TLD. Supported: .sui, .eth, .sol, .apt, .base.eth`, chain: null } });
                 }
 
                 // Resolve using chain-specific logic
@@ -129,7 +126,7 @@ export function registerCrossChainTools(server) {
                 }
 
                 return mcpResponse(result);
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, null); }
         });
 
     server.tool('reverse_lookup_any',
@@ -254,6 +251,6 @@ export function registerCrossChainTools(server) {
                 }
 
                 return mcpResponse(result);
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, null); }
         });
 }

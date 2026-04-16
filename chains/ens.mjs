@@ -18,7 +18,8 @@ import {
 } from 'viem';
 import { namehash, normalize } from 'viem/ens';
 import { mainnet } from 'viem/chains';
-import { mcpResponse } from '../lib/helpers.mjs';
+import { mcpResponse, mcpErrorResponse } from '../lib/helpers.mjs';
+import { withRetry } from '../lib/retry.mjs';
 
 // ENS Contract addresses on mainnet
 const ENS_REGISTRY = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e';
@@ -179,12 +180,10 @@ const publicClient = createPublicClient({
 // Helper to get resolver address for a name
 async function getResolver(name) {
     const node = namehash(normalize(name));
-    const resolverAddress = await publicClient.readContract({
-        address: ENS_REGISTRY,
-        abi: REGISTRY_ABI,
-        functionName: 'resolver',
-        args: [node],
-    });
+    const resolverAddress = await withRetry(
+        () => publicClient.readContract({ address: ENS_REGISTRY, abi: REGISTRY_ABI, functionName: 'resolver', args: [node] }),
+        { maxAttempts: 4, baseDelayMs: 200, label: 'ens_getResolver' }
+    );
     return resolverAddress;
 }
 
@@ -203,10 +202,13 @@ export function registerEnsTools(server) {
         { name: z.string().describe('The .eth name to resolve e.g. vitalik.eth') },
         async ({ name }) => {
             try {
-                const address = await publicClient.getEnsAddress({ name: normalize(name) });
-                if (!address) return mcpResponse({ error: `Name "${name}" not found or has no address` });
+                const address = await withRetry(
+                    () => publicClient.getEnsAddress({ name: normalize(name) }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'ens_resolve_name' }
+                );
+                if (!address) return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found or has no address`, chain: 'ens' } });
                 return mcpResponse({ name, address });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     server.tool('ens_reverse_lookup',
@@ -216,24 +218,20 @@ export function registerEnsTools(server) {
             try {
                 // Use direct registry lookup to avoid ENSIP-19 batch-gateway issues
                 const reverseNode = namehash(`${address.toLowerCase().slice(2)}.addr.reverse`);
-                const resolverAddress = await publicClient.readContract({
-                    address: ENS_REGISTRY,
-                    abi: REGISTRY_ABI,
-                    functionName: 'resolver',
-                    args: [reverseNode],
-                });
+                const resolverAddress = await withRetry(
+                    () => publicClient.readContract({ address: ENS_REGISTRY, abi: REGISTRY_ABI, functionName: 'resolver', args: [reverseNode] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'ens_reverse_lookup_resolver' }
+                );
                 if (!resolverAddress || resolverAddress === '0x0000000000000000000000000000000000000000') {
-                    return mcpResponse({ error: `No primary ENS name found for "${address}"` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `No primary ENS name found for "${address}"`, chain: 'ens' } });
                 }
-                const name = await publicClient.readContract({
-                    address: resolverAddress,
-                    abi: RESOLVER_ABI,
-                    functionName: 'name',
-                    args: [reverseNode],
-                });
-                if (!name) return mcpResponse({ error: `No primary ENS name found for "${address}"` });
+                const name = await withRetry(
+                    () => publicClient.readContract({ address: resolverAddress, abi: RESOLVER_ABI, functionName: 'name', args: [reverseNode] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'ens_reverse_lookup_name' }
+                );
+                if (!name) return mcpResponse({ error: { code: 'NOT_FOUND', message: `No primary ENS name found for "${address}"`, chain: 'ens' } });
                 return mcpResponse({ address, name });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     server.tool('ens_get_name_record',
@@ -247,26 +245,22 @@ export function registerEnsTools(server) {
                 // Get resolver
                 const resolverAddress = await getResolver(normalizedName);
                 if (resolverAddress === '0x0000000000000000000000000000000000000000') {
-                    return mcpResponse({ error: `Name "${name}" has no resolver set` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" has no resolver set`, chain: 'ens' } });
                 }
 
                 // Get owner from registry (or NameWrapper)
-                const owner = await publicClient.readContract({
-                    address: ENS_REGISTRY,
-                    abi: REGISTRY_ABI,
-                    functionName: 'owner',
-                    args: [node],
-                });
+                const owner = await withRetry(
+                    () => publicClient.readContract({ address: ENS_REGISTRY, abi: REGISTRY_ABI, functionName: 'owner', args: [node] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'ens_get_name_record_owner' }
+                );
 
                 // Get address
                 let address = null;
                 try {
-                    address = await publicClient.readContract({
-                        address: resolverAddress,
-                        abi: RESOLVER_ABI,
-                        functionName: 'addr',
-                        args: [node],
-                    });
+                    address = await withRetry(
+                        () => publicClient.readContract({ address: resolverAddress, abi: RESOLVER_ABI, functionName: 'addr', args: [node] }),
+                        { maxAttempts: 4, baseDelayMs: 200, label: 'ens_get_name_record_addr' }
+                    );
                 } catch {}
 
                 // Get common text records
@@ -274,12 +268,10 @@ export function registerEnsTools(server) {
                 const textRecords = {};
                 for (const key of textKeys) {
                     try {
-                        const value = await publicClient.readContract({
-                            address: resolverAddress,
-                            abi: RESOLVER_ABI,
-                            functionName: 'text',
-                            args: [node, key],
-                        });
+                        const value = await withRetry(
+                            () => publicClient.readContract({ address: resolverAddress, abi: RESOLVER_ABI, functionName: 'text', args: [node, key] }),
+                            { maxAttempts: 4, baseDelayMs: 200, label: `ens_get_name_record_text_${key}` }
+                        );
                         if (value) textRecords[key] = value;
                     } catch {}
                 }
@@ -287,12 +279,10 @@ export function registerEnsTools(server) {
                 // Get contenthash
                 let contenthash = null;
                 try {
-                    const hash = await publicClient.readContract({
-                        address: resolverAddress,
-                        abi: RESOLVER_ABI,
-                        functionName: 'contenthash',
-                        args: [node],
-                    });
+                    const hash = await withRetry(
+                        () => publicClient.readContract({ address: resolverAddress, abi: RESOLVER_ABI, functionName: 'contenthash', args: [node] }),
+                        { maxAttempts: 4, baseDelayMs: 200, label: 'ens_get_name_record_contenthash' }
+                    );
                     if (hash && hash !== '0x') contenthash = hash;
                 } catch {}
 
@@ -304,7 +294,7 @@ export function registerEnsTools(server) {
                     textRecords,
                     contenthash,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     server.tool('ens_check_availability',
@@ -314,14 +304,12 @@ export function registerEnsTools(server) {
             try {
                 // Remove .eth suffix if present
                 const label = name.toLowerCase().replace(/\.eth$/, '');
-                const available = await publicClient.readContract({
-                    address: ETH_REGISTRAR_CONTROLLER,
-                    abi: CONTROLLER_ABI,
-                    functionName: 'available',
-                    args: [label],
-                });
+                const available = await withRetry(
+                    () => publicClient.readContract({ address: ETH_REGISTRAR_CONTROLLER, abi: CONTROLLER_ABI, functionName: 'available', args: [label] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'ens_check_availability' }
+                );
                 return mcpResponse({ name: `${label}.eth`, available });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     server.tool('ens_get_pricing',
@@ -335,12 +323,10 @@ export function registerEnsTools(server) {
                 const label = name.toLowerCase().replace(/\.eth$/, '');
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
 
-                const [base, premium] = await publicClient.readContract({
-                    address: ETH_REGISTRAR_CONTROLLER,
-                    abi: CONTROLLER_ABI,
-                    functionName: 'rentPrice',
-                    args: [label, duration],
-                });
+                const [base, premium] = await withRetry(
+                    () => publicClient.readContract({ address: ETH_REGISTRAR_CONTROLLER, abi: CONTROLLER_ABI, functionName: 'rentPrice', args: [label, duration] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'ens_get_pricing' }
+                );
 
                 const total = base + premium;
 
@@ -353,7 +339,7 @@ export function registerEnsTools(server) {
                     currency: 'ETH',
                     note: premium > 0n ? 'This name has a premium due to recent expiration' : undefined,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     // ==================== CHAIN-SPECIFIC QUERY TOOLS ====================
@@ -371,18 +357,16 @@ export function registerEnsTools(server) {
                 const resolverAddress = await getResolver(normalizedName);
 
                 if (resolverAddress === '0x0000000000000000000000000000000000000000') {
-                    return mcpResponse({ error: `Name "${name}" has no resolver set` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" has no resolver set`, chain: 'ens' } });
                 }
 
-                const value = await publicClient.readContract({
-                    address: resolverAddress,
-                    abi: RESOLVER_ABI,
-                    functionName: 'text',
-                    args: [node, key],
-                });
+                const value = await withRetry(
+                    () => publicClient.readContract({ address: resolverAddress, abi: RESOLVER_ABI, functionName: 'text', args: [node, key] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'ens_get_text_record' }
+                );
 
                 return mcpResponse({ name: normalizedName, key, value: value || null });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     server.tool('ens_get_contenthash',
@@ -395,21 +379,19 @@ export function registerEnsTools(server) {
                 const resolverAddress = await getResolver(normalizedName);
 
                 if (resolverAddress === '0x0000000000000000000000000000000000000000') {
-                    return mcpResponse({ error: `Name "${name}" has no resolver set` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" has no resolver set`, chain: 'ens' } });
                 }
 
-                const hash = await publicClient.readContract({
-                    address: resolverAddress,
-                    abi: RESOLVER_ABI,
-                    functionName: 'contenthash',
-                    args: [node],
-                });
+                const hash = await withRetry(
+                    () => publicClient.readContract({ address: resolverAddress, abi: RESOLVER_ABI, functionName: 'contenthash', args: [node] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'ens_get_contenthash' }
+                );
 
                 return mcpResponse({
                     name: normalizedName,
                     contenthash: hash && hash !== '0x' ? hash : null,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     // ==================== TRANSACTION TOOLS ====================
@@ -463,7 +445,7 @@ export function registerEnsTools(server) {
                     commitment,
                     note: 'After executing this transaction, wait at least 60 seconds before calling ens_build_register_tx with the same secret',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     server.tool('ens_build_register_tx',
@@ -514,7 +496,7 @@ export function registerEnsTools(server) {
                     valueEth: formatEther(valueWithBuffer),
                     note: 'Send this transaction with the specified ETH value. Excess ETH will be refunded.',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     server.tool('ens_build_renew_tx',
@@ -552,7 +534,7 @@ export function registerEnsTools(server) {
                     valueEth: formatEther(valueWithBuffer),
                     note: 'Send this transaction with the specified ETH value. Excess ETH will be refunded.',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     server.tool('ens_build_set_target_address_tx',
@@ -568,7 +550,7 @@ export function registerEnsTools(server) {
                 const resolverAddress = await getResolver(normalizedName);
 
                 if (resolverAddress === '0x0000000000000000000000000000000000000000') {
-                    return mcpResponse({ error: `Name "${name}" has no resolver set` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" has no resolver set`, chain: 'ens' } });
                 }
 
                 const data = encodeFunctionData({
@@ -583,7 +565,7 @@ export function registerEnsTools(server) {
                     value: '0',
                     note: 'Sign and send this transaction to update the address record',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     server.tool('ens_build_set_default_name_tx',
@@ -605,7 +587,7 @@ export function registerEnsTools(server) {
                     value: '0',
                     note: 'Sign and send this transaction to set your primary ENS name. The sender address must be the target of this name.',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 
     server.tool('ens_build_set_metadata_tx',
@@ -622,7 +604,7 @@ export function registerEnsTools(server) {
                 const resolverAddress = await getResolver(normalizedName);
 
                 if (resolverAddress === '0x0000000000000000000000000000000000000000') {
-                    return mcpResponse({ error: `Name "${name}" has no resolver set` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" has no resolver set`, chain: 'ens' } });
                 }
 
                 let data;
@@ -646,6 +628,6 @@ export function registerEnsTools(server) {
                     value: '0',
                     note: `Sign and send this transaction to set the ${key} record`,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'ens'); }
         });
 }

@@ -12,7 +12,7 @@ import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from '@mysten/sui/jsonRpc';
 import { SuinsClient, SuinsTransaction, ALLOWED_METADATA } from '@mysten/suins';
 import { Transaction } from '@mysten/sui/transactions';
 import { kiosk, KioskTransaction } from '@mysten/kiosk';
-import { mcpResponse, formatSuiPrices } from '../lib/helpers.mjs';
+import { mcpResponse, formatSuiPrices, mcpErrorResponse } from '../lib/helpers.mjs';
 
 // Initialize Sui clients
 const suiClient = new SuiJsonRpcClient({ url: getJsonRpcFullnodeUrl('mainnet') }).$extend(kiosk());
@@ -71,9 +71,9 @@ export function registerSuiTools(server) {
         async ({ name }) => {
             try {
                 const address = await suiClient.resolveNameServiceAddress({ name });
-                if (!address) return mcpResponse({ error: `Name "${name}" not found or has no address` });
+                if (!address) return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found or has no address`, chain: 'sui' } });
                 return mcpResponse({ name, address });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_reverse_lookup',
@@ -82,9 +82,9 @@ export function registerSuiTools(server) {
         async ({ address }) => {
             try {
                 const result = await suiClient.resolveNameServiceNames({ address });
-                if (!result?.data?.length) return mcpResponse({ error: `No .sui name found for "${address}"` });
+                if (!result?.data?.length) return mcpResponse({ error: { code: 'NOT_FOUND', message: `No .sui name found for "${address}"`, chain: 'sui' } });
                 return mcpResponse({ address, names: result.data });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_get_name_record',
@@ -93,7 +93,7 @@ export function registerSuiTools(server) {
         async ({ name }) => {
             try {
                 const record = await suinsClient.getNameRecord(name);
-                if (!record) return mcpResponse({ error: `Name "${name}" not found` });
+                if (!record) return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found`, chain: 'sui' } });
                 return mcpResponse({
                     name: record.name,
                     address: record.targetAddress,
@@ -102,7 +102,7 @@ export function registerSuiTools(server) {
                     contentHash: record.contentHash,
                     walrusSiteId: record.walrusSiteId,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_check_availability',
@@ -130,7 +130,7 @@ export function registerSuiTools(server) {
                     NS: 'calculated by Pyth oracle at tx execution time (25% discount applied)',
                     note: 'Only USDC prices are fixed. SUI and NS amounts are determined on-chain.',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_get_renewal_pricing',
@@ -146,7 +146,7 @@ export function registerSuiTools(server) {
                     NS: 'calculated by Pyth oracle at tx execution time (25% discount applied)',
                     note: 'Only USDC prices are fixed. SUI and NS amounts are determined on-chain.',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     // ==================== TRANSACTION TOOLS ====================
@@ -179,7 +179,7 @@ export function registerSuiTools(server) {
                     const coins = await suiClient.getCoins({ owner: sender, coinType: coinConfig.type });
                     const best = coins.data.sort((a, b) => Number(b.balance) - Number(a.balance))[0];
                     if (!best) {
-                        return mcpResponse({ error: `No ${coinType} coins found in sender wallet` });
+                        return mcpResponse({ error: { code: 'INVALID_PARAMS', message: `No ${coinType} coins found in sender wallet`, chain: 'sui' } });
                     }
                     const priceList = await suinsClient.getPriceList();
                     const nameLen = name.replace('.sui', '').length;
@@ -208,7 +208,7 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_build_renew_tx',
@@ -242,7 +242,7 @@ export function registerSuiTools(server) {
                     const coins = await suiClient.getCoins({ owner: sender, coinType: coinConfig.type });
                     const best = coins.data.sort((a, b) => Number(b.balance) - Number(a.balance))[0];
                     if (!best) {
-                        return mcpResponse({ error: `No ${coinType} coins found in sender wallet` });
+                        return mcpResponse({ error: { code: 'INVALID_PARAMS', message: `No ${coinType} coins found in sender wallet`, chain: 'sui' } });
                     }
                     const priceList = await suinsClient.getRenewalPriceList();
                     const nameLen = name.replace('.sui', '').length;
@@ -286,7 +286,7 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_build_create_subname_tx',
@@ -340,7 +340,7 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_build_create_leaf_subname_tx',
@@ -388,7 +388,7 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_build_remove_leaf_subname_tx',
@@ -434,7 +434,7 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_build_set_target_address_tx',
@@ -482,7 +482,7 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_build_set_default_name_tx',
@@ -502,7 +502,7 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet. Signer must be the target address of this name.',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_build_edit_subname_setup_tx',
@@ -552,7 +552,7 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_build_extend_expiration_tx',
@@ -598,7 +598,7 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_build_set_metadata_tx',
@@ -652,7 +652,7 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 
     server.tool('sui_build_burn_expired_tx',
@@ -690,6 +690,6 @@ export function registerSuiTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sui'); }
         });
 }

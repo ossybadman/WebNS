@@ -14,7 +14,7 @@ import {
     Network,
     AccountAddress,
 } from '@aptos-labs/ts-sdk';
-import { mcpResponse } from '../lib/helpers.mjs';
+import { mcpResponse, mcpErrorResponse } from '../lib/helpers.mjs';
 
 // Initialize Aptos client
 const config = new AptosConfig({ network: Network.MAINNET });
@@ -39,7 +39,7 @@ export function registerAptTools(server) {
                 const result = await aptos.ans.getName({ name: domain });
 
                 if (!result || (!result.registered_address && !result.owner_address)) {
-                    return mcpResponse({ error: `Name "${name}" not found` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found`, chain: 'apt' } });
                 }
 
                 return mcpResponse({
@@ -48,7 +48,7 @@ export function registerAptTools(server) {
                     owner: result.owner_address,
                     expiration: result.expiration_timestamp,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'apt'); }
         });
 
     server.tool('apt_reverse_lookup',
@@ -59,14 +59,14 @@ export function registerAptTools(server) {
                 const primaryName = await aptos.ans.getPrimaryName({ address });
 
                 if (!primaryName) {
-                    return mcpResponse({ error: `No primary .apt name found for "${address}"` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `No primary .apt name found for "${address}"`, chain: 'apt' } });
                 }
 
                 return mcpResponse({
                     address,
                     primaryName: `${primaryName}.apt`,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'apt'); }
         });
 
     server.tool('apt_get_name_record',
@@ -79,7 +79,7 @@ export function registerAptTools(server) {
                 const result = await aptos.ans.getName({ name: domain });
 
                 if (!result) {
-                    return mcpResponse({ error: `Name "${name}" not found` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found`, chain: 'apt' } });
                 }
 
                 // Calculate human-readable expiration
@@ -96,7 +96,7 @@ export function registerAptTools(server) {
                     isSubdomain: !!(result.subdomain && result.subdomain !== ''),
                     isPrimary: result.is_primary,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'apt'); }
         });
 
     server.tool('apt_check_availability',
@@ -118,7 +118,7 @@ export function registerAptTools(server) {
                     available,
                     ...(isExpired && { note: 'Name is expired and can be re-registered' }),
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'apt'); }
         });
 
     server.tool('apt_get_account_domains',
@@ -155,7 +155,7 @@ export function registerAptTools(server) {
                     count: domains.length,
                     hasMore: domains.length === limit,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'apt'); }
         });
 
     // ==================== TRANSACTION TOOLS ====================
@@ -190,7 +190,7 @@ export function registerAptTools(server) {
                     years,
                     note: 'Sign and submit this transaction with your wallet. Payment is in APT.',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'apt'); }
         });
 
     server.tool('apt_build_renew_tx',
@@ -218,7 +218,7 @@ export function registerAptTools(server) {
                     years,
                     note: 'Sign and submit this transaction with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'apt'); }
         });
 
     server.tool('apt_build_create_subname_tx',
@@ -255,7 +255,7 @@ export function registerAptTools(server) {
                     name: `${subName}.${parentDomain}.apt`,
                     note: 'Sign and submit this transaction with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'apt'); }
         });
 
     server.tool('apt_build_set_target_address_tx',
@@ -281,7 +281,7 @@ export function registerAptTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and submit this transaction with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'apt'); }
         });
 
     server.tool('apt_build_set_default_name_tx',
@@ -305,6 +305,6 @@ export function registerAptTools(server) {
                     txBytes: Buffer.from(txBytes).toString('base64'),
                     note: 'Sign and submit this transaction with your wallet. Sender must be the target address of this name.',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'apt'); }
         });
 }

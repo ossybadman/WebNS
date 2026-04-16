@@ -18,7 +18,8 @@ import {
 } from 'viem';
 import { namehash, normalize } from 'viem/ens';
 import { base } from 'viem/chains';
-import { mcpResponse } from '../lib/helpers.mjs';
+import { mcpResponse, mcpErrorResponse } from '../lib/helpers.mjs';
+import { withRetry } from '../lib/retry.mjs';
 
 // Basenames contract addresses on Base mainnet
 const L2_RESOLVER = '0x426fA03fB86E510d0Dd9F70335Cf102a98b10875';
@@ -167,12 +168,10 @@ function computeReverseNode(address) {
 async function getResolver(name) {
     const node = namehash(normalize(name));
     try {
-        const resolverAddress = await publicClient.readContract({
-            address: BASE_REGISTRY,
-            abi: REGISTRY_ABI,
-            functionName: 'resolver',
-            args: [node],
-        });
+        const resolverAddress = await withRetry(
+            () => publicClient.readContract({ address: BASE_REGISTRY, abi: REGISTRY_ABI, functionName: 'resolver', args: [node] }),
+            { maxAttempts: 4, baseDelayMs: 200, label: 'base_getResolver' }
+        );
         return resolverAddress;
     } catch {
         return L2_RESOLVER; // Fall back to default resolver
@@ -196,22 +195,20 @@ export function registerBaseTools(server) {
 
                 const resolverAddress = await getResolver(normalizedName);
                 if (resolverAddress === '0x0000000000000000000000000000000000000000') {
-                    return mcpResponse({ error: `Name "${name}" has no resolver set` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" has no resolver set`, chain: 'base' } });
                 }
 
-                const address = await publicClient.readContract({
-                    address: resolverAddress,
-                    abi: RESOLVER_ABI,
-                    functionName: 'addr',
-                    args: [node],
-                });
+                const address = await withRetry(
+                    () => publicClient.readContract({ address: resolverAddress, abi: RESOLVER_ABI, functionName: 'addr', args: [node] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'base_resolve_name' }
+                );
 
                 if (!address || address === '0x0000000000000000000000000000000000000000') {
-                    return mcpResponse({ error: `Name "${name}" not found or has no address` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found or has no address`, chain: 'base' } });
                 }
 
                 return mcpResponse({ name: normalizedName, address });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'base'); }
         });
 
     server.tool('base_reverse_lookup',
@@ -221,19 +218,17 @@ export function registerBaseTools(server) {
             try {
                 const reverseNode = computeReverseNode(address);
 
-                const name = await publicClient.readContract({
-                    address: L2_RESOLVER,
-                    abi: RESOLVER_ABI,
-                    functionName: 'name',
-                    args: [reverseNode],
-                });
+                const name = await withRetry(
+                    () => publicClient.readContract({ address: L2_RESOLVER, abi: RESOLVER_ABI, functionName: 'name', args: [reverseNode] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'base_reverse_lookup' }
+                );
 
                 if (!name) {
-                    return mcpResponse({ error: `No primary Basename found for "${address}"` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `No primary Basename found for "${address}"`, chain: 'base' } });
                 }
 
                 return mcpResponse({ address, name });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'base'); }
         });
 
     server.tool('base_get_name_record',
@@ -246,29 +241,25 @@ export function registerBaseTools(server) {
 
                 const resolverAddress = await getResolver(normalizedName);
                 if (resolverAddress === '0x0000000000000000000000000000000000000000') {
-                    return mcpResponse({ error: `Name "${name}" has no resolver set` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" has no resolver set`, chain: 'base' } });
                 }
 
                 // Get owner
                 let owner = null;
                 try {
-                    owner = await publicClient.readContract({
-                        address: BASE_REGISTRY,
-                        abi: REGISTRY_ABI,
-                        functionName: 'owner',
-                        args: [node],
-                    });
+                    owner = await withRetry(
+                        () => publicClient.readContract({ address: BASE_REGISTRY, abi: REGISTRY_ABI, functionName: 'owner', args: [node] }),
+                        { maxAttempts: 4, baseDelayMs: 200, label: 'base_get_name_record_owner' }
+                    );
                 } catch {}
 
                 // Get address
                 let address = null;
                 try {
-                    address = await publicClient.readContract({
-                        address: resolverAddress,
-                        abi: RESOLVER_ABI,
-                        functionName: 'addr',
-                        args: [node],
-                    });
+                    address = await withRetry(
+                        () => publicClient.readContract({ address: resolverAddress, abi: RESOLVER_ABI, functionName: 'addr', args: [node] }),
+                        { maxAttempts: 4, baseDelayMs: 200, label: 'base_get_name_record_addr' }
+                    );
                 } catch {}
 
                 // Get common text records
@@ -276,12 +267,10 @@ export function registerBaseTools(server) {
                 const textRecords = {};
                 for (const key of textKeys) {
                     try {
-                        const value = await publicClient.readContract({
-                            address: resolverAddress,
-                            abi: RESOLVER_ABI,
-                            functionName: 'text',
-                            args: [node, key],
-                        });
+                        const value = await withRetry(
+                            () => publicClient.readContract({ address: resolverAddress, abi: RESOLVER_ABI, functionName: 'text', args: [node, key] }),
+                            { maxAttempts: 4, baseDelayMs: 200, label: `base_get_name_record_text_${key}` }
+                        );
                         if (value) textRecords[key] = value;
                     } catch {}
                 }
@@ -289,12 +278,10 @@ export function registerBaseTools(server) {
                 // Get contenthash
                 let contenthash = null;
                 try {
-                    const hash = await publicClient.readContract({
-                        address: resolverAddress,
-                        abi: RESOLVER_ABI,
-                        functionName: 'contenthash',
-                        args: [node],
-                    });
+                    const hash = await withRetry(
+                        () => publicClient.readContract({ address: resolverAddress, abi: RESOLVER_ABI, functionName: 'contenthash', args: [node] }),
+                        { maxAttempts: 4, baseDelayMs: 200, label: 'base_get_name_record_contenthash' }
+                    );
                     if (hash && hash !== '0x') contenthash = hash;
                 } catch {}
 
@@ -307,7 +294,7 @@ export function registerBaseTools(server) {
                     contenthash,
                     chain: 'Base (8453)',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'base'); }
         });
 
     server.tool('base_check_availability',
@@ -317,18 +304,16 @@ export function registerBaseTools(server) {
             try {
                 const label = name.toLowerCase().replace(/\.base\.eth$/, '');
 
-                const available = await publicClient.readContract({
-                    address: REGISTRAR_CONTROLLER,
-                    abi: REGISTRAR_ABI,
-                    functionName: 'available',
-                    args: [label],
-                });
+                const available = await withRetry(
+                    () => publicClient.readContract({ address: REGISTRAR_CONTROLLER, abi: REGISTRAR_ABI, functionName: 'available', args: [label] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'base_check_availability' }
+                );
 
                 return mcpResponse({
                     name: `${label}.base.eth`,
                     available,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'base'); }
         });
 
     server.tool('base_get_pricing',
@@ -342,12 +327,10 @@ export function registerBaseTools(server) {
                 const label = name.toLowerCase().replace(/\.base\.eth$/, '');
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
 
-                const price = await publicClient.readContract({
-                    address: REGISTRAR_CONTROLLER,
-                    abi: REGISTRAR_ABI,
-                    functionName: 'registerPrice',
-                    args: [label, duration],
-                });
+                const price = await withRetry(
+                    () => publicClient.readContract({ address: REGISTRAR_CONTROLLER, abi: REGISTRAR_ABI, functionName: 'registerPrice', args: [label, duration] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'base_get_pricing' }
+                );
 
                 return mcpResponse({
                     name: `${label}.base.eth`,
@@ -357,7 +340,7 @@ export function registerBaseTools(server) {
                     chain: 'Base',
                     note: 'Price is in ETH on Base L2',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'base'); }
         });
 
     // ==================== TRANSACTION TOOLS ====================
@@ -376,12 +359,10 @@ export function registerBaseTools(server) {
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
 
                 // Get the price
-                const price = await publicClient.readContract({
-                    address: REGISTRAR_CONTROLLER,
-                    abi: REGISTRAR_ABI,
-                    functionName: 'registerPrice',
-                    args: [label, duration],
-                });
+                const price = await withRetry(
+                    () => publicClient.readContract({ address: REGISTRAR_CONTROLLER, abi: REGISTRAR_ABI, functionName: 'registerPrice', args: [label, duration] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'base_build_register_tx_price' }
+                );
 
                 // Add 5% buffer
                 const valueWithBuffer = (price * 105n) / 100n;
@@ -409,7 +390,7 @@ export function registerBaseTools(server) {
                     chain: 'Base (8453)',
                     note: 'Send this transaction on Base L2 with the specified ETH value',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'base'); }
         });
 
     server.tool('base_build_renew_tx',
@@ -424,12 +405,10 @@ export function registerBaseTools(server) {
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
 
                 // Get the price
-                const price = await publicClient.readContract({
-                    address: REGISTRAR_CONTROLLER,
-                    abi: REGISTRAR_ABI,
-                    functionName: 'registerPrice',
-                    args: [label, duration],
-                });
+                const price = await withRetry(
+                    () => publicClient.readContract({ address: REGISTRAR_CONTROLLER, abi: REGISTRAR_ABI, functionName: 'registerPrice', args: [label, duration] }),
+                    { maxAttempts: 4, baseDelayMs: 200, label: 'base_build_renew_tx_price' }
+                );
 
                 // Add 5% buffer
                 const valueWithBuffer = (price * 105n) / 100n;
@@ -448,7 +427,7 @@ export function registerBaseTools(server) {
                     chain: 'Base (8453)',
                     note: 'Send this transaction on Base L2 with the specified ETH value',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'base'); }
         });
 
     server.tool('base_build_set_target_address_tx',
@@ -475,7 +454,7 @@ export function registerBaseTools(server) {
                     chain: 'Base (8453)',
                     note: 'Send this transaction on Base L2',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'base'); }
         });
 
     server.tool('base_build_set_default_name_tx',
@@ -498,7 +477,7 @@ export function registerBaseTools(server) {
                     chain: 'Base (8453)',
                     note: 'Send this transaction on Base L2. Sender must be the target of this name.',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'base'); }
         });
 
     server.tool('base_build_set_metadata_tx',
@@ -535,6 +514,6 @@ export function registerBaseTools(server) {
                     chain: 'Base (8453)',
                     note: `Send this transaction on Base L2 to set the ${key} record`,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'base'); }
         });
 }

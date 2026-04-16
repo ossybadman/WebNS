@@ -24,7 +24,7 @@ import {
     updateRecordV2Instruction,
     registerFavorite,
 } from '@bonfida/spl-name-service';
-import { mcpResponse } from '../lib/helpers.mjs';
+import { mcpResponse, mcpErrorResponse } from '../lib/helpers.mjs';
 
 // Initialize Solana connection
 const rpcUrl = process.env.SOLANA_RPC_URL || process.env.SOL_RPC_URL || clusterApiUrl('mainnet-beta');
@@ -76,9 +76,9 @@ export function registerSolTools(server) {
                 });
             } catch (e) {
                 if (e.message?.includes('Domain not found') || e.message?.includes('Invalid name account')) {
-                    return mcpResponse({ error: `Name "${name}" not found` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found`, chain: 'sol' } });
                 }
-                return mcpResponse({ error: e.message });
+                return mcpErrorResponse(e, 'sol');
             }
         });
 
@@ -90,7 +90,7 @@ export function registerSolTools(server) {
                 // Step 1: get all domain names for this wallet
                 const domains = await proxyFetch(`/domains/${address}`);
                 if (!Array.isArray(domains) || domains.length === 0) {
-                    return mcpResponse({ error: `No .sol domains found for "${address}"` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `No .sol domains found for "${address}"`, chain: 'sol' } });
                 }
 
                 // Steps 2+3: for each domain, get its domain key then verify via reverse-lookup
@@ -114,10 +114,10 @@ export function registerSolTools(server) {
                 }
 
                 if (names.length === 0) {
-                    return mcpResponse({ error: `No .sol domains found for "${address}"` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `No .sol domains found for "${address}"`, chain: 'sol' } });
                 }
                 return mcpResponse({ address, names, count: names.length });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sol'); }
         });
 
     server.tool('sol_get_name_record',
@@ -153,9 +153,9 @@ export function registerSolTools(server) {
                 });
             } catch (e) {
                 if (e.message?.includes('Invalid name account provided')) {
-                    return mcpResponse({ error: `Name "${name}" not found` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found`, chain: 'sol' } });
                 }
-                return mcpResponse({ error: e.message });
+                return mcpErrorResponse(e, 'sol');
             }
         });
 
@@ -179,7 +179,7 @@ export function registerSolTools(server) {
                         available: !accountInfo,
                     });
                 }
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sol'); }
         });
 
     server.tool('sol_get_favorite_domain',
@@ -190,10 +190,10 @@ export function registerSolTools(server) {
                 const result = await proxyFetch(`/favorite-domain/${address}`);
                 // result is a string or null — never assume it's a string
                 if (result === null || result === undefined) {
-                    return mcpResponse({ error: `No favorite domain set for "${address}"` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `No favorite domain set for "${address}"`, chain: 'sol' } });
                 }
                 if (typeof result !== 'string') {
-                    return mcpResponse({ error: `No favorite domain set for "${address}"` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `No favorite domain set for "${address}"`, chain: 'sol' } });
                 }
                 const domain = result;
                 const { pubkey } = getDomainKeySync(domain);
@@ -204,9 +204,9 @@ export function registerSolTools(server) {
                 });
             } catch (e) {
                 if (e.message?.includes('favourite') || e.message?.includes('Favourite') || e.message?.includes('not found')) {
-                    return mcpResponse({ error: `No favorite domain set for "${address}"` });
+                    return mcpResponse({ error: { code: 'NOT_FOUND', message: `No favorite domain set for "${address}"`, chain: 'sol' } });
                 }
-                return mcpResponse({ error: e.message });
+                return mcpErrorResponse(e, 'sol');
             }
         });
 
@@ -227,7 +227,7 @@ export function registerSolTools(server) {
                         domainKey: getDomainKeySync(n).pubkey.toBase58(),
                     }));
                 return mcpResponse({ address, domains, count: domains.length });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sol'); }
         });
 
     // ==================== TRANSACTION TOOLS ====================
@@ -270,7 +270,7 @@ export function registerSolTools(server) {
                     txBytes: serialized.toString('base64'),
                     note: 'Sign and send this transaction with your wallet. SNS domains are perpetual - no renewal needed.',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sol'); }
         });
 
     server.tool('sol_build_set_target_address_tx',
@@ -311,7 +311,7 @@ export function registerSolTools(server) {
                     txBytes: serialized.toString('base64'),
                     note: 'Sign and send this transaction with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sol'); }
         });
 
     server.tool('sol_build_set_default_name_tx',
@@ -349,7 +349,7 @@ export function registerSolTools(server) {
                     txBytes: serialized.toString('base64'),
                     note: 'Sign and send this transaction with your wallet',
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sol'); }
         });
 
     server.tool('sol_build_set_metadata_tx',
@@ -368,7 +368,7 @@ export function registerSolTools(server) {
                 const recordType = RECORD_KEYS[key];
 
                 if (!recordType) {
-                    return mcpResponse({ error: `Unknown record type: ${key}` });
+                    return mcpResponse({ error: { code: 'INVALID_PARAMS', message: `Unknown record type: ${key}`, chain: 'sol' } });
                 }
 
                 const ix = updateRecordV2Instruction(
@@ -395,6 +395,6 @@ export function registerSolTools(server) {
                     txBytes: serialized.toString('base64'),
                     note: `Sign and send this transaction to set the ${key} record`,
                 });
-            } catch (e) { return mcpResponse({ error: e.message }); }
+            } catch (e) { return mcpErrorResponse(e, 'sol'); }
         });
 }
