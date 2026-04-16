@@ -56,8 +56,8 @@ export function registerCrossChainTools(server) {
                         const client = createPublicClient({ chain: mainnet, transport: http(ethRpc) });
                         const address = await client.getEnsAddress({
                             name: normalize(name),
-                            universalResolverAddress: '0xc0497E381f536Be9ce14B0dD3817cBcAe57d2F62',
-                            gatewayUrls: ['https://ccip.ens.xyz/{sender}/{data}.json'],
+                            universalResolverAddress: '0xeeeeeeee14d718c2b47d9923deab1335e144eeee',
+                            gatewayUrls: ['https://ccip.ens.xyz'],
                         });
                         if (!address) {
                             result = { error: `Name "${name}" not found` };
@@ -163,8 +163,8 @@ export function registerCrossChainTools(server) {
                         const client = createPublicClient({ chain: mainnet, transport: http(ethRpc) });
                         const name = await client.getEnsName({
                             address,
-                            universalResolverAddress: '0xc0497E381f536Be9ce14B0dD3817cBcAe57d2F62',
-                            gatewayUrls: ['https://ccip.ens.xyz/{sender}/{data}.json'],
+                            universalResolverAddress: '0xeeeeeeee14d718c2b47d9923deab1335e144eeee',
+                            gatewayUrls: ['https://ccip.ens.xyz'],
                         });
                         if (!name) {
                             result = { error: `No .eth name found for "${address}"` };

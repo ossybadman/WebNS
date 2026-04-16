@@ -87,21 +87,36 @@ export function registerSolTools(server) {
         { address: z.string().describe('The Solana wallet address to look up') },
         async ({ address }) => {
             try {
-                // Input must be a plain base58 public key string
-                const result = await proxyFetch(`/reverse-lookup/${address}`);
-                if (result === null || result === undefined) {
+                // Step 1: get all domain names for this wallet
+                const domains = await proxyFetch(`/domains/${address}`);
+                if (!Array.isArray(domains) || domains.length === 0) {
                     return mcpResponse({ error: `No .sol domains found for "${address}"` });
                 }
-                const nameList = (Array.isArray(result) ? result : [result])
-                    .filter(n => typeof n === 'string' && n.length > 0);
-                if (nameList.length === 0) {
+
+                // Steps 2+3: for each domain, get its domain key then verify via reverse-lookup
+                const names = [];
+                for (const domain of domains) {
+                    if (typeof domain !== 'string' || domain.length === 0) continue;
+                    const label = domain.replace(/\.sol$/, '');
+                    try {
+                        // Step 2: get the domain account public key
+                        const domainKey = await proxyFetch(`/domain-key/${label}`);
+                        if (typeof domainKey !== 'string') continue;
+                        // Step 3: reverse-lookup the domain key to confirm the name
+                        const resolvedName = await proxyFetch(`/reverse-lookup/${domainKey}`);
+                        if (typeof resolvedName === 'string' && resolvedName.length > 0) {
+                            names.push(resolvedName.endsWith('.sol') ? resolvedName : `${resolvedName}.sol`);
+                        }
+                    } catch {
+                        // domain key or reverse-lookup failed — fall back to the name from /domains
+                        names.push(`${label}.sol`);
+                    }
+                }
+
+                if (names.length === 0) {
                     return mcpResponse({ error: `No .sol domains found for "${address}"` });
                 }
-                return mcpResponse({
-                    address,
-                    names: nameList.map(n => n.endsWith('.sol') ? n : `${n}.sol`),
-                    count: nameList.length,
-                });
+                return mcpResponse({ address, names, count: names.length });
             } catch (e) { return mcpResponse({ error: e.message }); }
         });
 
