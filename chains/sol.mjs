@@ -87,14 +87,19 @@ export function registerSolTools(server) {
         { address: z.string().describe('The Solana wallet address to look up') },
         async ({ address }) => {
             try {
+                // Input must be a plain base58 public key string
                 const result = await proxyFetch(`/reverse-lookup/${address}`);
-                const nameList = (Array.isArray(result) ? result : [result]).filter(Boolean);
+                if (result === null || result === undefined) {
+                    return mcpResponse({ error: `No .sol domains found for "${address}"` });
+                }
+                const nameList = (Array.isArray(result) ? result : [result])
+                    .filter(n => typeof n === 'string' && n.length > 0);
                 if (nameList.length === 0) {
                     return mcpResponse({ error: `No .sol domains found for "${address}"` });
                 }
                 return mcpResponse({
                     address,
-                    names: nameList.map(n => `${n}.sol`),
+                    names: nameList.map(n => n.endsWith('.sol') ? n : `${n}.sol`),
                     count: nameList.length,
                 });
             } catch (e) { return mcpResponse({ error: e.message }); }
@@ -167,7 +172,15 @@ export function registerSolTools(server) {
         { address: z.string().describe('The Solana wallet address') },
         async ({ address }) => {
             try {
-                const domain = await proxyFetch(`/favorite-domain/${address}`);
+                const result = await proxyFetch(`/favorite-domain/${address}`);
+                // result is a string or null — never assume it's a string
+                if (result === null || result === undefined) {
+                    return mcpResponse({ error: `No favorite domain set for "${address}"` });
+                }
+                if (typeof result !== 'string') {
+                    return mcpResponse({ error: `No favorite domain set for "${address}"` });
+                }
+                const domain = result;
                 const { pubkey } = getDomainKeySync(domain);
                 return mcpResponse({
                     address,
@@ -187,14 +200,17 @@ export function registerSolTools(server) {
         { address: z.string().describe('The Solana wallet address') },
         async ({ address }) => {
             try {
-                const names = await proxyFetch(`/domains/${address}`);
-                if (!names || names.length === 0) {
+                const result = await proxyFetch(`/domains/${address}`);
+                // result is an array of strings
+                if (!Array.isArray(result) || result.length === 0) {
                     return mcpResponse({ address, domains: [], count: 0 });
                 }
-                const domains = names.map(n => ({
-                    name: `${n}.sol`,
-                    domainKey: getDomainKeySync(n).pubkey.toBase58(),
-                }));
+                const domains = result
+                    .filter(n => typeof n === 'string' && n.length > 0)
+                    .map(n => ({
+                        name: `${n}.sol`,
+                        domainKey: getDomainKeySync(n).pubkey.toBase58(),
+                    }));
                 return mcpResponse({ address, domains, count: domains.length });
             } catch (e) { return mcpResponse({ error: e.message }); }
         });

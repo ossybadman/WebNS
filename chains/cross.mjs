@@ -51,8 +51,14 @@ export function registerCrossChainTools(server) {
                         const { createPublicClient, http } = await import('viem');
                         const { normalize } = await import('viem/ens');
                         const { mainnet } = await import('viem/chains');
-                        const client = createPublicClient({ chain: mainnet, transport: http() });
-                        const address = await client.getEnsAddress({ name: normalize(name) });
+                        const ethRpc = process.env.ETHEREUM_RPC_URL || process.env.ETH_RPC_URL;
+                        if (!ethRpc) throw new Error('ETHEREUM_RPC_URL is not configured');
+                        const client = createPublicClient({ chain: mainnet, transport: http(ethRpc) });
+                        const address = await client.getEnsAddress({
+                            name: normalize(name),
+                            universalResolverAddress: '0xc0497E381f536Be9ce14B0dD3817cBcAe57d2F62',
+                            gatewayUrls: ['https://ccip.ens.xyz/{sender}/{data}.json'],
+                        });
                         if (!address) {
                             result = { error: `Name "${name}" not found` };
                         } else {
@@ -93,7 +99,7 @@ export function registerCrossChainTools(server) {
                         const { createPublicClient, http } = await import('viem');
                         const { namehash, normalize } = await import('viem/ens');
                         const { base } = await import('viem/chains');
-                        const client = createPublicClient({ chain: base, transport: http('https://mainnet.base.org') });
+                        const client = createPublicClient({ chain: base, transport: http(process.env.BASE_RPC_URL || 'https://mainnet.base.org') });
                         const normalizedName = normalize(name);
                         const node = namehash(normalizedName);
                         const BASE_REGISTRY = '0xB94704422c2a1E396835A571837Aa5AE53285a95';
@@ -152,8 +158,14 @@ export function registerCrossChainTools(server) {
                     case 'ens': {
                         const { createPublicClient, http } = await import('viem');
                         const { mainnet } = await import('viem/chains');
-                        const client = createPublicClient({ chain: mainnet, transport: http() });
-                        const name = await client.getEnsName({ address });
+                        const ethRpc = process.env.ETHEREUM_RPC_URL || process.env.ETH_RPC_URL;
+                        if (!ethRpc) throw new Error('ETHEREUM_RPC_URL is not configured');
+                        const client = createPublicClient({ chain: mainnet, transport: http(ethRpc) });
+                        const name = await client.getEnsName({
+                            address,
+                            universalResolverAddress: '0xc0497E381f536Be9ce14B0dD3817cBcAe57d2F62',
+                            gatewayUrls: ['https://ccip.ens.xyz/{sender}/{data}.json'],
+                        });
                         if (!name) {
                             result = { error: `No .eth name found for "${address}"` };
                         } else {
@@ -215,7 +227,7 @@ export function registerCrossChainTools(server) {
                         const { createPublicClient, http } = await import('viem');
                         const { namehash } = await import('viem/ens');
                         const { base } = await import('viem/chains');
-                        const client = createPublicClient({ chain: base, transport: http('https://mainnet.base.org') });
+                        const client = createPublicClient({ chain: base, transport: http(process.env.BASE_RPC_URL || 'https://mainnet.base.org') });
                         const reverseLabel = address.toLowerCase().slice(2);
                         const reverseNode = namehash(`${reverseLabel}.addr.reverse`);
                         const L2_RESOLVER = '0x426fA03fB86E510d0Dd9F70335Cf102a98b10875';
