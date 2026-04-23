@@ -20,6 +20,7 @@ import { namehash, normalize } from 'viem/ens';
 import { base } from 'viem/chains';
 import { mcpResponse, mcpErrorResponse } from '../lib/helpers.mjs';
 import { withRetry } from '../lib/retry.mjs';
+import { withLogging } from '../lib/logger.mjs';
 
 // Basenames contract addresses on Base mainnet
 const L2_RESOLVER = '0x426fA03fB86E510d0Dd9F70335Cf102a98b10875';
@@ -188,7 +189,7 @@ export function registerBaseTools(server) {
     server.tool('base_resolve_name',
         'Resolve a .base.eth name to a wallet address',
         { name: z.string().describe('The .base.eth name to resolve e.g. alice.base.eth') },
-        async ({ name }) => {
+        withLogging('base_resolve_name', async ({ name }) => {
             try {
                 const normalizedName = normalize(name);
                 const node = namehash(normalizedName);
@@ -209,12 +210,12 @@ export function registerBaseTools(server) {
 
                 return mcpResponse({ name: normalizedName, address });
             } catch (e) { return mcpErrorResponse(e, 'base'); }
-        });
+        }));
 
     server.tool('base_reverse_lookup',
         'Find the primary .base.eth name for a Base wallet address',
         { address: z.string().describe('The Base/Ethereum address to look up (0x...)') },
-        async ({ address }) => {
+        withLogging('base_reverse_lookup', async ({ address }) => {
             try {
                 const reverseNode = computeReverseNode(address);
 
@@ -229,12 +230,12 @@ export function registerBaseTools(server) {
 
                 return mcpResponse({ address, name });
             } catch (e) { return mcpErrorResponse(e, 'base'); }
-        });
+        }));
 
     server.tool('base_get_name_record',
         'Get full details of a .base.eth name including owner and text records',
         { name: z.string().describe('The .base.eth name to get details for') },
-        async ({ name }) => {
+        withLogging('base_get_name_record', async ({ name }) => {
             try {
                 const normalizedName = normalize(name);
                 const node = namehash(normalizedName);
@@ -295,12 +296,12 @@ export function registerBaseTools(server) {
                     chain: 'Base (8453)',
                 });
             } catch (e) { return mcpErrorResponse(e, 'base'); }
-        });
+        }));
 
     server.tool('base_check_availability',
         'Check if a .base.eth name is available to register',
         { name: z.string().describe('The name to check (without .base.eth suffix)') },
-        async ({ name }) => {
+        withLogging('base_check_availability', async ({ name }) => {
             try {
                 const label = name.toLowerCase().replace(/\.base\.eth$/, '');
 
@@ -314,7 +315,7 @@ export function registerBaseTools(server) {
                     available,
                 });
             } catch (e) { return mcpErrorResponse(e, 'base'); }
-        });
+        }));
 
     server.tool('base_get_pricing',
         'Get Basenames registration pricing for a name',
@@ -322,7 +323,7 @@ export function registerBaseTools(server) {
             name: z.string().describe('The name to get pricing for (without .base.eth suffix)'),
             years: z.number().min(1).max(10).default(1).describe('Number of years'),
         },
-        async ({ name, years }) => {
+        withLogging('base_get_pricing', async ({ name, years }) => {
             try {
                 const label = name.toLowerCase().replace(/\.base\.eth$/, '');
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
@@ -341,7 +342,7 @@ export function registerBaseTools(server) {
                     note: 'Price is in ETH on Base L2',
                 });
             } catch (e) { return mcpErrorResponse(e, 'base'); }
-        });
+        }));
 
     // ==================== TRANSACTION TOOLS ====================
 
@@ -353,7 +354,7 @@ export function registerBaseTools(server) {
             years: z.number().min(1).max(10).default(1),
             setReverseRecord: z.boolean().default(true).describe('Set this name as primary for the owner'),
         },
-        async ({ name, owner, years, setReverseRecord }) => {
+        withLogging('base_build_register_tx', async ({ name, owner, years, setReverseRecord }) => {
             try {
                 const label = name.toLowerCase().replace(/\.base\.eth$/, '');
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
@@ -391,7 +392,7 @@ export function registerBaseTools(server) {
                     note: 'Send this transaction on Base L2 with the specified ETH value',
                 });
             } catch (e) { return mcpErrorResponse(e, 'base'); }
-        });
+        }));
 
     server.tool('base_build_renew_tx',
         'Build a transaction to renew a .base.eth name. Returns unsigned tx data.',
@@ -399,7 +400,7 @@ export function registerBaseTools(server) {
             name: z.string().describe('The name to renew (without .base.eth suffix)'),
             years: z.number().min(1).max(10).default(1),
         },
-        async ({ name, years }) => {
+        withLogging('base_build_renew_tx', async ({ name, years }) => {
             try {
                 const label = name.toLowerCase().replace(/\.base\.eth$/, '');
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
@@ -428,7 +429,7 @@ export function registerBaseTools(server) {
                     note: 'Send this transaction on Base L2 with the specified ETH value',
                 });
             } catch (e) { return mcpErrorResponse(e, 'base'); }
-        });
+        }));
 
     server.tool('base_build_set_target_address_tx',
         'Build a transaction to set the address for a .base.eth name. Returns unsigned tx data.',
@@ -436,7 +437,7 @@ export function registerBaseTools(server) {
             name: z.string().describe('The .base.eth name'),
             address: z.string().describe('The target wallet address'),
         },
-        async ({ name, address }) => {
+        withLogging('base_build_set_target_address_tx', async ({ name, address }) => {
             try {
                 const normalizedName = normalize(name);
                 const node = namehash(normalizedName);
@@ -455,12 +456,12 @@ export function registerBaseTools(server) {
                     note: 'Send this transaction on Base L2',
                 });
             } catch (e) { return mcpErrorResponse(e, 'base'); }
-        });
+        }));
 
     server.tool('base_build_set_default_name_tx',
         'Build a transaction to set a .base.eth name as the primary name for the sender. Returns unsigned tx data.',
         { name: z.string().describe('The .base.eth name to set as primary') },
-        async ({ name }) => {
+        withLogging('base_build_set_default_name_tx', async ({ name }) => {
             try {
                 const normalizedName = normalize(name);
 
@@ -478,7 +479,7 @@ export function registerBaseTools(server) {
                     note: 'Send this transaction on Base L2. Sender must be the target of this name.',
                 });
             } catch (e) { return mcpErrorResponse(e, 'base'); }
-        });
+        }));
 
     server.tool('base_build_set_metadata_tx',
         'Build a transaction to set text records or contenthash on a .base.eth name. Returns unsigned tx data.',
@@ -487,7 +488,7 @@ export function registerBaseTools(server) {
             key: z.string().describe('The record key (e.g. avatar, twitter, github, url, description, email, contenthash)'),
             value: z.string().describe('The value to set'),
         },
-        async ({ name, key, value }) => {
+        withLogging('base_build_set_metadata_tx', async ({ name, key, value }) => {
             try {
                 const normalizedName = normalize(name);
                 const node = namehash(normalizedName);
@@ -515,5 +516,5 @@ export function registerBaseTools(server) {
                     note: `Send this transaction on Base L2 to set the ${key} record`,
                 });
             } catch (e) { return mcpErrorResponse(e, 'base'); }
-        });
+        }));
 }

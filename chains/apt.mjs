@@ -15,6 +15,7 @@ import {
     AccountAddress,
 } from '@aptos-labs/ts-sdk';
 import { mcpResponse, mcpErrorResponse } from '../lib/helpers.mjs';
+import { withLogging } from '../lib/logger.mjs';
 
 // Initialize Aptos client
 const config = new AptosConfig({ network: Network.MAINNET });
@@ -31,7 +32,7 @@ export function registerAptTools(server) {
     server.tool('apt_resolve_name',
         'Resolve a .apt name to an Aptos wallet address',
         { name: z.string().describe('The .apt name to resolve e.g. alice.apt') },
-        async ({ name }) => {
+        withLogging('apt_resolve_name', async ({ name }) => {
             try {
                 // Remove .apt suffix and normalize
                 const domain = name.toLowerCase().replace(/\.apt$/, '');
@@ -49,12 +50,12 @@ export function registerAptTools(server) {
                     expiration: result.expiration_timestamp,
                 });
             } catch (e) { return mcpErrorResponse(e, 'apt'); }
-        });
+        }));
 
     server.tool('apt_reverse_lookup',
         'Find the primary .apt name for an Aptos wallet address',
         { address: z.string().describe('The Aptos wallet address to look up') },
-        async ({ address }) => {
+        withLogging('apt_reverse_lookup', async ({ address }) => {
             try {
                 const primaryName = await aptos.ans.getPrimaryName({ address });
 
@@ -67,12 +68,12 @@ export function registerAptTools(server) {
                     primaryName: `${primaryName}.apt`,
                 });
             } catch (e) { return mcpErrorResponse(e, 'apt'); }
-        });
+        }));
 
     server.tool('apt_get_name_record',
         'Get full details of a .apt name including expiry, owner, and target address',
         { name: z.string().describe('The .apt name to get details for') },
-        async ({ name }) => {
+        withLogging('apt_get_name_record', async ({ name }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.apt$/, '');
 
@@ -97,12 +98,12 @@ export function registerAptTools(server) {
                     isPrimary: result.is_primary,
                 });
             } catch (e) { return mcpErrorResponse(e, 'apt'); }
-        });
+        }));
 
     server.tool('apt_check_availability',
         'Check if a .apt name is available to register',
         { name: z.string().describe('The .apt name to check e.g. myname.apt') },
-        async ({ name }) => {
+        withLogging('apt_check_availability', async ({ name }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.apt$/, '');
 
@@ -119,7 +120,7 @@ export function registerAptTools(server) {
                     ...(isExpired && { note: 'Name is expired and can be re-registered' }),
                 });
             } catch (e) { return mcpErrorResponse(e, 'apt'); }
-        });
+        }));
 
     server.tool('apt_get_account_domains',
         'List all .apt domains owned by an account',
@@ -128,7 +129,7 @@ export function registerAptTools(server) {
             limit: z.number().min(1).max(100).default(20).describe('Maximum number of results'),
             offset: z.number().min(0).default(0).describe('Pagination offset'),
         },
-        async ({ address, limit, offset }) => {
+        withLogging('apt_get_account_domains', async ({ address, limit, offset }) => {
             try {
                 const names = await aptos.ans.getAccountNames({
                     accountAddress: address,
@@ -156,7 +157,7 @@ export function registerAptTools(server) {
                     hasMore: domains.length === limit,
                 });
             } catch (e) { return mcpErrorResponse(e, 'apt'); }
-        });
+        }));
 
     // ==================== TRANSACTION TOOLS ====================
 
@@ -168,7 +169,7 @@ export function registerAptTools(server) {
             years: z.number().min(1).max(5).default(1).describe('Number of years to register'),
             targetAddress: z.string().optional().describe('Optional: Set a different target address'),
         },
-        async ({ name, owner, years, targetAddress }) => {
+        withLogging('apt_build_register_tx', async ({ name, owner, years, targetAddress }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.apt$/, '');
                 const target = targetAddress || owner;
@@ -191,7 +192,7 @@ export function registerAptTools(server) {
                     note: 'Sign and submit this transaction with your wallet. Payment is in APT.',
                 });
             } catch (e) { return mcpErrorResponse(e, 'apt'); }
-        });
+        }));
 
     server.tool('apt_build_renew_tx',
         'Build a transaction to renew an existing .apt name. Returns unsigned transaction payload.',
@@ -200,7 +201,7 @@ export function registerAptTools(server) {
             sender: z.string().describe('The wallet address sending the transaction'),
             years: z.number().min(1).max(5).default(1).describe('Number of years to extend'),
         },
-        async ({ name, sender, years }) => {
+        withLogging('apt_build_renew_tx', async ({ name, sender, years }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.apt$/, '');
 
@@ -219,7 +220,7 @@ export function registerAptTools(server) {
                     note: 'Sign and submit this transaction with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'apt'); }
-        });
+        }));
 
     server.tool('apt_build_create_subname_tx',
         'Build a transaction to create a subdomain under an existing .apt name. Returns unsigned transaction payload.',
@@ -232,7 +233,7 @@ export function registerAptTools(server) {
                 .describe('Expiration policy: "domain" follows parent, "independent" has its own'),
             years: z.number().min(1).max(5).optional().describe('Years if using independent expiration'),
         },
-        async ({ subdomain, domain, sender, targetAddress, expirationPolicy, years }) => {
+        withLogging('apt_build_create_subname_tx', async ({ subdomain, domain, sender, targetAddress, expirationPolicy, years }) => {
             try {
                 const parentDomain = domain.toLowerCase().replace(/\.apt$/, '');
                 const subName = subdomain.toLowerCase();
@@ -256,7 +257,7 @@ export function registerAptTools(server) {
                     note: 'Sign and submit this transaction with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'apt'); }
-        });
+        }));
 
     server.tool('apt_build_set_target_address_tx',
         'Build a transaction to set the target address for a .apt name. Returns unsigned transaction payload.',
@@ -265,7 +266,7 @@ export function registerAptTools(server) {
             address: z.string().describe('The target Aptos wallet address'),
             sender: z.string().describe('The wallet address (must own this name)'),
         },
-        async ({ name, address, sender }) => {
+        withLogging('apt_build_set_target_address_tx', async ({ name, address, sender }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.apt$/, '');
 
@@ -282,7 +283,7 @@ export function registerAptTools(server) {
                     note: 'Sign and submit this transaction with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'apt'); }
-        });
+        }));
 
     server.tool('apt_build_set_default_name_tx',
         'Build a transaction to set a .apt name as the primary name for the sender. Returns unsigned transaction payload.',
@@ -290,7 +291,7 @@ export function registerAptTools(server) {
             name: z.string().describe('The .apt name to set as primary'),
             sender: z.string().describe('The wallet address (must be the target of this name)'),
         },
-        async ({ name, sender }) => {
+        withLogging('apt_build_set_default_name_tx', async ({ name, sender }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.apt$/, '');
 
@@ -306,5 +307,5 @@ export function registerAptTools(server) {
                     note: 'Sign and submit this transaction with your wallet. Sender must be the target address of this name.',
                 });
             } catch (e) { return mcpErrorResponse(e, 'apt'); }
-        });
+        }));
 }

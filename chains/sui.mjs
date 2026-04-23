@@ -13,6 +13,7 @@ import { SuinsClient, SuinsTransaction, ALLOWED_METADATA } from '@mysten/suins';
 import { Transaction } from '@mysten/sui/transactions';
 import { kiosk, KioskTransaction } from '@mysten/kiosk';
 import { mcpResponse, formatSuiPrices, mcpErrorResponse } from '../lib/helpers.mjs';
+import { withLogging } from '../lib/logger.mjs';
 
 // Initialize Sui clients
 const suiClient = new SuiJsonRpcClient({ url: getJsonRpcFullnodeUrl('mainnet') }).$extend(kiosk());
@@ -68,29 +69,29 @@ export function registerSuiTools(server) {
     server.tool('sui_resolve_name',
         'Resolve a .sui name to a wallet address',
         { name: z.string().describe('The .sui name to resolve e.g. ossy.sui') },
-        async ({ name }) => {
+        withLogging('sui_resolve_name', async ({ name }) => {
             try {
                 const address = await suiClient.resolveNameServiceAddress({ name });
                 if (!address) return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found or has no address`, chain: 'sui' } });
                 return mcpResponse({ name, address });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_reverse_lookup',
         'Find the .sui name(s) for a wallet address',
         { address: z.string().describe('The Sui wallet address to look up') },
-        async ({ address }) => {
+        withLogging('sui_reverse_lookup', async ({ address }) => {
             try {
                 const result = await suiClient.resolveNameServiceNames({ address });
                 if (!result?.data?.length) return mcpResponse({ error: { code: 'NOT_FOUND', message: `No .sui name found for "${address}"`, chain: 'sui' } });
                 return mcpResponse({ address, names: result.data });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_get_name_record',
         'Get full details of a .sui name including expiry, avatar, and content hash',
         { name: z.string().describe('The .sui name to get details for') },
-        async ({ name }) => {
+        withLogging('sui_get_name_record', async ({ name }) => {
             try {
                 const record = await suinsClient.getNameRecord(name);
                 if (!record) return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found`, chain: 'sui' } });
@@ -103,24 +104,24 @@ export function registerSuiTools(server) {
                     walrusSiteId: record.walrusSiteId,
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_check_availability',
         'Check if a .sui name is available to register',
         { name: z.string().describe('The .sui name to check e.g. myname.sui') },
-        async ({ name }) => {
+        withLogging('sui_check_availability', async ({ name }) => {
             try {
                 const record = await suinsClient.getNameRecord(name);
                 return mcpResponse({ name, available: !record });
             } catch {
                 return mcpResponse({ name, available: true });
             }
-        });
+        }));
 
     server.tool('sui_get_pricing',
         'Get current SuiNS registration pricing by name length in USDC, NS, and SUI',
         {},
-        async () => {
+        withLogging('sui_get_pricing', async () => {
             try {
                 const priceList = await suinsClient.getPriceList();
                 const USDC = formatSuiPrices(priceList);
@@ -131,12 +132,12 @@ export function registerSuiTools(server) {
                     note: 'Only USDC prices are fixed. SUI and NS amounts are determined on-chain.',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_get_renewal_pricing',
         'Get current SuiNS renewal pricing by name length in USDC, NS, and SUI',
         {},
-        async () => {
+        withLogging('sui_get_renewal_pricing', async () => {
             try {
                 const priceList = await suinsClient.getRenewalPriceList();
                 const USDC = formatSuiPrices(priceList);
@@ -147,7 +148,7 @@ export function registerSuiTools(server) {
                     note: 'Only USDC prices are fixed. SUI and NS amounts are determined on-chain.',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     // ==================== TRANSACTION TOOLS ====================
 
@@ -160,7 +161,7 @@ export function registerSuiTools(server) {
             recipient: z.string(),
             sender: z.string(),
         },
-        async ({ name, years, coinType, recipient, sender }) => {
+        withLogging('sui_build_register_tx', async ({ name, years, coinType, recipient, sender }) => {
             try {
                 const tx = new Transaction();
                 tx.setSender(sender);
@@ -209,7 +210,7 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_build_renew_tx',
         'Build a transaction to renew an existing .sui name. Returns unsigned tx bytes.',
@@ -220,7 +221,7 @@ export function registerSuiTools(server) {
             coinType: z.enum(['USDC', 'SUI', 'NS']).default('USDC'),
             sender: z.string(),
         },
-        async ({ name, nftId, years, coinType, sender }) => {
+        withLogging('sui_build_renew_tx', async ({ name, nftId, years, coinType, sender }) => {
             try {
                 const ownership = await resolveNftOwnership(nftId, sender);
                 if (ownership.error) return mcpResponse({ error: ownership.error });
@@ -287,7 +288,7 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_build_create_subname_tx',
         'Build a transaction to create a node subname (has its own NFT). Returns unsigned tx bytes.',
@@ -300,7 +301,7 @@ export function registerSuiTools(server) {
             allowTimeExtension: z.boolean().default(true),
             sender: z.string(),
         },
-        async ({ subname, parentNftId, expirationMs, recipient, allowChildCreation, allowTimeExtension, sender }) => {
+        withLogging('sui_build_create_subname_tx', async ({ subname, parentNftId, expirationMs, recipient, allowChildCreation, allowTimeExtension, sender }) => {
             try {
                 const ownership = await resolveNftOwnership(parentNftId, sender);
                 if (ownership.error) return mcpResponse({ error: ownership.error });
@@ -341,7 +342,7 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_build_create_leaf_subname_tx',
         'Build a transaction to create a leaf subname (no NFT, controlled by parent). Returns unsigned tx bytes.',
@@ -351,7 +352,7 @@ export function registerSuiTools(server) {
             targetAddress: z.string(),
             sender: z.string(),
         },
-        async ({ subname, parentNftId, targetAddress, sender }) => {
+        withLogging('sui_build_create_leaf_subname_tx', async ({ subname, parentNftId, targetAddress, sender }) => {
             try {
                 const ownership = await resolveNftOwnership(parentNftId, sender);
                 if (ownership.error) return mcpResponse({ error: ownership.error });
@@ -389,7 +390,7 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_build_remove_leaf_subname_tx',
         'Build a transaction to remove a leaf subname. Returns unsigned tx bytes.',
@@ -398,7 +399,7 @@ export function registerSuiTools(server) {
             parentNftId: z.string(),
             sender: z.string(),
         },
-        async ({ subname, parentNftId, sender }) => {
+        withLogging('sui_build_remove_leaf_subname_tx', async ({ subname, parentNftId, sender }) => {
             try {
                 const ownership = await resolveNftOwnership(parentNftId, sender);
                 if (ownership.error) return mcpResponse({ error: ownership.error });
@@ -435,7 +436,7 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_build_set_target_address_tx',
         'Build a transaction to set the target address for a .sui name. Returns unsigned tx bytes.',
@@ -445,7 +446,7 @@ export function registerSuiTools(server) {
             isSubname: z.boolean().default(false),
             sender: z.string(),
         },
-        async ({ nftId, address, isSubname, sender }) => {
+        withLogging('sui_build_set_target_address_tx', async ({ nftId, address, isSubname, sender }) => {
             try {
                 const ownership = await resolveNftOwnership(nftId, sender);
                 if (ownership.error) return mcpResponse({ error: ownership.error });
@@ -483,12 +484,12 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_build_set_default_name_tx',
         'Build a transaction to set a .sui name as the default for the signer address. Returns unsigned tx bytes.',
         { name: z.string(), sender: z.string() },
-        async ({ name, sender }) => {
+        withLogging('sui_build_set_default_name_tx', async ({ name, sender }) => {
             try {
                 const tx = new Transaction();
                 tx.setSender(sender);
@@ -503,7 +504,7 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet. Signer must be the target address of this name.',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_build_edit_subname_setup_tx',
         'Build a transaction to edit a subname setup (child creation / time extension). Returns unsigned tx bytes.',
@@ -514,7 +515,7 @@ export function registerSuiTools(server) {
             allowTimeExtension: z.boolean(),
             sender: z.string(),
         },
-        async ({ name, parentNftId, allowChildCreation, allowTimeExtension, sender }) => {
+        withLogging('sui_build_edit_subname_setup_tx', async ({ name, parentNftId, allowChildCreation, allowTimeExtension, sender }) => {
             try {
                 const ownership = await resolveNftOwnership(parentNftId, sender);
                 if (ownership.error) return mcpResponse({ error: ownership.error });
@@ -553,7 +554,7 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_build_extend_expiration_tx',
         'Build a transaction to extend a SUBNAME expiration (SubDomainRegistration NFT only). Returns unsigned tx bytes.',
@@ -562,7 +563,7 @@ export function registerSuiTools(server) {
             expirationMs: z.number(),
             sender: z.string(),
         },
-        async ({ nftId, expirationMs, sender }) => {
+        withLogging('sui_build_extend_expiration_tx', async ({ nftId, expirationMs, sender }) => {
             try {
                 const ownership = await resolveNftOwnership(nftId, sender);
                 if (ownership.error) return mcpResponse({ error: ownership.error });
@@ -599,7 +600,7 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_build_set_metadata_tx',
         'Build a transaction to set metadata on a .sui name (avatar, content hash, walrus site ID). Returns unsigned tx bytes.',
@@ -611,7 +612,7 @@ export function registerSuiTools(server) {
             walrusSiteId: z.string().optional(),
             sender: z.string(),
         },
-        async ({ nftId, isSubname, avatar, contentHash, walrusSiteId, sender }) => {
+        withLogging('sui_build_set_metadata_tx', async ({ nftId, isSubname, avatar, contentHash, walrusSiteId, sender }) => {
             try {
                 const ownership = await resolveNftOwnership(nftId, sender);
                 if (ownership.error) return mcpResponse({ error: ownership.error });
@@ -653,7 +654,7 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 
     server.tool('sui_build_burn_expired_tx',
         'Build a transaction to burn an expired .sui name and reclaim storage rebates. Returns unsigned tx bytes.',
@@ -662,7 +663,7 @@ export function registerSuiTools(server) {
             isSubname: z.boolean().default(false),
             sender: z.string(),
         },
-        async ({ nftId, isSubname, sender }) => {
+        withLogging('sui_build_burn_expired_tx', async ({ nftId, isSubname, sender }) => {
             try {
                 const ownership = await resolveNftOwnership(nftId, sender);
                 if (ownership.error) return mcpResponse({ error: ownership.error });
@@ -691,5 +692,5 @@ export function registerSuiTools(server) {
                     note: 'Sign and execute these tx bytes with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sui'); }
-        });
+        }));
 }

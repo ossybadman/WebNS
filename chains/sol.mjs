@@ -25,9 +25,10 @@ import {
     registerFavorite,
 } from '@bonfida/spl-name-service';
 import { mcpResponse, mcpErrorResponse } from '../lib/helpers.mjs';
+import { withLogging } from '../lib/logger.mjs';
 
 // Initialize Solana connection
-const rpcUrl = process.env.SOLANA_RPC_URL || process.env.SOL_RPC_URL || clusterApiUrl('mainnet-beta');
+const rpcUrl = process.env.SOLANA_RPC_URL || clusterApiUrl('mainnet-beta');
 const connection = new Connection(rpcUrl, 'confirmed');
 
 // SNS record types
@@ -64,7 +65,7 @@ export function registerSolTools(server) {
     server.tool('sol_resolve_name',
         'Resolve a .sol name to a Solana wallet address',
         { name: z.string().describe('The .sol name to resolve e.g. bonfida.sol') },
-        async ({ name }) => {
+        withLogging('sol_resolve_name', async ({ name }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.sol$/, '');
                 const address = await proxyFetch(`/resolve/${domain}`);
@@ -80,12 +81,12 @@ export function registerSolTools(server) {
                 }
                 return mcpErrorResponse(e, 'sol');
             }
-        });
+        }));
 
     server.tool('sol_reverse_lookup',
         'Find the .sol name(s) for a Solana wallet address',
         { address: z.string().describe('The Solana wallet address to look up') },
-        async ({ address }) => {
+        withLogging('sol_reverse_lookup', async ({ address }) => {
             try {
                 // Step 1: get all domain names for this wallet
                 const domains = await proxyFetch(`/domains/${address}`);
@@ -118,12 +119,12 @@ export function registerSolTools(server) {
                 }
                 return mcpResponse({ address, names, count: names.length });
             } catch (e) { return mcpErrorResponse(e, 'sol'); }
-        });
+        }));
 
     server.tool('sol_get_name_record',
         'Get full details of a .sol name including owner and records',
         { name: z.string().describe('The .sol name to get details for') },
-        async ({ name }) => {
+        withLogging('sol_get_name_record', async ({ name }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.sol$/, '');
                 const { pubkey } = getDomainKeySync(domain);
@@ -157,12 +158,12 @@ export function registerSolTools(server) {
                 }
                 return mcpErrorResponse(e, 'sol');
             }
-        });
+        }));
 
     server.tool('sol_check_availability',
         'Check if a .sol name is available to register',
         { name: z.string().describe('The .sol name to check e.g. myname.sol') },
-        async ({ name }) => {
+        withLogging('sol_check_availability', async ({ name }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.sol$/, '');
                 const { pubkey } = getDomainKeySync(domain);
@@ -180,12 +181,12 @@ export function registerSolTools(server) {
                     });
                 }
             } catch (e) { return mcpErrorResponse(e, 'sol'); }
-        });
+        }));
 
     server.tool('sol_get_favorite_domain',
         'Get the favorite/primary .sol domain for a wallet',
         { address: z.string().describe('The Solana wallet address') },
-        async ({ address }) => {
+        withLogging('sol_get_favorite_domain', async ({ address }) => {
             try {
                 const result = await proxyFetch(`/favorite-domain/${address}`);
                 // result is a string or null — never assume it's a string
@@ -208,12 +209,12 @@ export function registerSolTools(server) {
                 }
                 return mcpErrorResponse(e, 'sol');
             }
-        });
+        }));
 
     server.tool('sol_list_domains',
         'List all .sol domains owned by a wallet',
         { address: z.string().describe('The Solana wallet address') },
-        async ({ address }) => {
+        withLogging('sol_list_domains', async ({ address }) => {
             try {
                 const result = await proxyFetch(`/domains/${address}`);
                 // result is an array of strings
@@ -228,7 +229,7 @@ export function registerSolTools(server) {
                     }));
                 return mcpResponse({ address, domains, count: domains.length });
             } catch (e) { return mcpErrorResponse(e, 'sol'); }
-        });
+        }));
 
     // ==================== TRANSACTION TOOLS ====================
 
@@ -239,7 +240,7 @@ export function registerSolTools(server) {
             owner: z.string().describe('The wallet address that will own the domain'),
             space: z.number().min(1000).max(10000).default(2000).describe('Space to allocate for records (bytes)'),
         },
-        async ({ name, owner, space }) => {
+        withLogging('sol_build_register_tx', async ({ name, owner, space }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.sol$/, '');
                 const ownerPubkey = new PublicKey(owner);
@@ -271,7 +272,7 @@ export function registerSolTools(server) {
                     note: 'Sign and send this transaction with your wallet. SNS domains are perpetual - no renewal needed.',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sol'); }
-        });
+        }));
 
     server.tool('sol_build_set_target_address_tx',
         'Build a transaction to set the SOL record (wallet address) for a .sol name. Returns unsigned transaction bytes.',
@@ -280,7 +281,7 @@ export function registerSolTools(server) {
             address: z.string().describe('The target Solana wallet address'),
             owner: z.string().describe('The current owner of the domain (signer)'),
         },
-        async ({ name, address, owner }) => {
+        withLogging('sol_build_set_target_address_tx', async ({ name, address, owner }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.sol$/, '');
                 const ownerPubkey = new PublicKey(owner);
@@ -312,7 +313,7 @@ export function registerSolTools(server) {
                     note: 'Sign and send this transaction with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sol'); }
-        });
+        }));
 
     server.tool('sol_build_set_default_name_tx',
         'Build a transaction to set a .sol name as the favorite/primary name for a wallet. Returns unsigned transaction bytes.',
@@ -320,7 +321,7 @@ export function registerSolTools(server) {
             name: z.string().describe('The .sol name to set as favorite'),
             owner: z.string().describe('The wallet address (must own this domain)'),
         },
-        async ({ name, owner }) => {
+        withLogging('sol_build_set_default_name_tx', async ({ name, owner }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.sol$/, '');
                 const ownerPubkey = new PublicKey(owner);
@@ -350,7 +351,7 @@ export function registerSolTools(server) {
                     note: 'Sign and send this transaction with your wallet',
                 });
             } catch (e) { return mcpErrorResponse(e, 'sol'); }
-        });
+        }));
 
     server.tool('sol_build_set_metadata_tx',
         'Build a transaction to set a record on a .sol name (URL, IPFS, Twitter, etc). Returns unsigned transaction bytes.',
@@ -361,7 +362,7 @@ export function registerSolTools(server) {
             value: z.string().describe('The value to set'),
             owner: z.string().describe('The current owner of the domain (signer)'),
         },
-        async ({ name, key, value, owner }) => {
+        withLogging('sol_build_set_metadata_tx', async ({ name, key, value, owner }) => {
             try {
                 const domain = name.toLowerCase().replace(/\.sol$/, '');
                 const ownerPubkey = new PublicKey(owner);
@@ -396,5 +397,5 @@ export function registerSolTools(server) {
                     note: `Sign and send this transaction to set the ${key} record`,
                 });
             } catch (e) { return mcpErrorResponse(e, 'sol'); }
-        });
+        }));
 }

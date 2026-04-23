@@ -8,6 +8,7 @@
 
 import { z } from 'zod';
 import { mcpResponse, mcpErrorResponse, detectChainFromName } from '../lib/helpers.mjs';
+import { withLogging } from '../lib/logger.mjs';
 
 
 /**
@@ -19,7 +20,7 @@ export function registerCrossChainTools(server) {
     server.tool('resolve_any',
         'Resolve any blockchain name (.sui, .eth, .sol, .apt, .base.eth) to its address. Auto-detects chain from TLD.',
         { name: z.string().describe('The name to resolve (e.g. vitalik.eth, bonfida.sol, alice.sui, bob.apt, shrek.base.eth)') },
-        async ({ name }) => {
+        withLogging('resolve_any', async ({ name }) => {
             try {
                 const chain = detectChainFromName(name);
 
@@ -48,7 +49,7 @@ export function registerCrossChainTools(server) {
                         const { createPublicClient, http } = await import('viem');
                         const { normalize } = await import('viem/ens');
                         const { mainnet } = await import('viem/chains');
-                        const ethRpc = process.env.ETHEREUM_RPC_URL || process.env.ETH_RPC_URL;
+                        const ethRpc = process.env.ETHEREUM_RPC_URL;
                         if (!ethRpc) throw new Error('ETHEREUM_RPC_URL is not configured');
                         const client = createPublicClient({ chain: mainnet, transport: http(ethRpc) });
                         const address = await client.getEnsAddress({
@@ -67,7 +68,7 @@ export function registerCrossChainTools(server) {
                     case 'sol': {
                         const { resolve } = await import('@bonfida/spl-name-service');
                         const { Connection, clusterApiUrl } = await import('@solana/web3.js');
-                        const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
+                        const connection = new Connection(process.env.SOLANA_RPC_URL || clusterApiUrl('mainnet-beta'), 'confirmed');
                         const domain = name.toLowerCase().replace(/\.sol$/, '');
                         try {
                             const owner = await resolve(connection, domain);
@@ -127,7 +128,7 @@ export function registerCrossChainTools(server) {
 
                 return mcpResponse(result);
             } catch (e) { return mcpErrorResponse(e, null); }
-        });
+        }));
 
     server.tool('reverse_lookup_any',
         'Find the primary name for an address on any supported chain',
@@ -135,7 +136,7 @@ export function registerCrossChainTools(server) {
             address: z.string().describe('The wallet address to look up'),
             chain: z.enum(['sui', 'ens', 'sol', 'apt', 'base']).describe('The chain to search on'),
         },
-        async ({ address, chain }) => {
+        withLogging('reverse_lookup_any', async ({ address, chain }) => {
             try {
                 let result;
 
@@ -155,7 +156,7 @@ export function registerCrossChainTools(server) {
                     case 'ens': {
                         const { createPublicClient, http } = await import('viem');
                         const { mainnet } = await import('viem/chains');
-                        const ethRpc = process.env.ETHEREUM_RPC_URL || process.env.ETH_RPC_URL;
+                        const ethRpc = process.env.ETHEREUM_RPC_URL;
                         if (!ethRpc) throw new Error('ETHEREUM_RPC_URL is not configured');
                         const client = createPublicClient({ chain: mainnet, transport: http(ethRpc) });
                         const name = await client.getEnsName({
@@ -174,7 +175,7 @@ export function registerCrossChainTools(server) {
                     case 'sol': {
                         const { getAllDomains, reverseLookup, getFavoriteDomain } = await import('@bonfida/spl-name-service');
                         const { Connection, clusterApiUrl, PublicKey } = await import('@solana/web3.js');
-                        const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
+                        const connection = new Connection(process.env.SOLANA_RPC_URL || clusterApiUrl('mainnet-beta'), 'confirmed');
                         const pubkey = new PublicKey(address);
 
                         // Try favorite first
@@ -252,5 +253,5 @@ export function registerCrossChainTools(server) {
 
                 return mcpResponse(result);
             } catch (e) { return mcpErrorResponse(e, null); }
-        });
+        }));
 }

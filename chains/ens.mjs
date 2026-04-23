@@ -20,6 +20,7 @@ import { namehash, normalize } from 'viem/ens';
 import { mainnet } from 'viem/chains';
 import { mcpResponse, mcpErrorResponse } from '../lib/helpers.mjs';
 import { withRetry } from '../lib/retry.mjs';
+import { withLogging } from '../lib/logger.mjs';
 
 // ENS Contract addresses on mainnet
 const ENS_REGISTRY = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e';
@@ -171,7 +172,7 @@ const REVERSE_REGISTRAR_ABI = [
 ];
 
 // Initialize viem client
-const rpcUrl = process.env.ETHEREUM_RPC_URL || process.env.ETH_RPC_URL || 'https://cloudflare-eth.com';
+const rpcUrl = process.env.ETHEREUM_RPC_URL || 'https://cloudflare-eth.com';
 const publicClient = createPublicClient({
     chain: mainnet,
     transport: http(rpcUrl),
@@ -200,7 +201,7 @@ export function registerEnsTools(server) {
     server.tool('ens_resolve_name',
         'Resolve a .eth name to an Ethereum wallet address',
         { name: z.string().describe('The .eth name to resolve e.g. vitalik.eth') },
-        async ({ name }) => {
+        withLogging('ens_resolve_name', async ({ name }) => {
             try {
                 const address = await withRetry(
                     () => publicClient.getEnsAddress({ name: normalize(name) }),
@@ -209,12 +210,12 @@ export function registerEnsTools(server) {
                 if (!address) return mcpResponse({ error: { code: 'NOT_FOUND', message: `Name "${name}" not found or has no address`, chain: 'ens' } });
                 return mcpResponse({ name, address });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     server.tool('ens_reverse_lookup',
         'Find the primary .eth name for an Ethereum address',
         { address: z.string().describe('The Ethereum address to look up (0x...)') },
-        async ({ address }) => {
+        withLogging('ens_reverse_lookup', async ({ address }) => {
             try {
                 // Use direct registry lookup to avoid ENSIP-19 batch-gateway issues
                 const reverseNode = namehash(`${address.toLowerCase().slice(2)}.addr.reverse`);
@@ -232,12 +233,12 @@ export function registerEnsTools(server) {
                 if (!name) return mcpResponse({ error: { code: 'NOT_FOUND', message: `No primary ENS name found for "${address}"`, chain: 'ens' } });
                 return mcpResponse({ address, name });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     server.tool('ens_get_name_record',
         'Get full details of an .eth name including resolver, owner, and common text records',
         { name: z.string().describe('The .eth name to get details for') },
-        async ({ name }) => {
+        withLogging('ens_get_name_record', async ({ name }) => {
             try {
                 const normalizedName = normalize(name);
                 const node = namehash(normalizedName);
@@ -295,12 +296,12 @@ export function registerEnsTools(server) {
                     contenthash,
                 });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     server.tool('ens_check_availability',
         'Check if a .eth name is available to register',
         { name: z.string().describe('The .eth name to check (without .eth suffix, e.g. "myname" not "myname.eth")') },
-        async ({ name }) => {
+        withLogging('ens_check_availability', async ({ name }) => {
             try {
                 // Remove .eth suffix if present
                 const label = name.toLowerCase().replace(/\.eth$/, '');
@@ -310,7 +311,7 @@ export function registerEnsTools(server) {
                 );
                 return mcpResponse({ name: `${label}.eth`, available });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     server.tool('ens_get_pricing',
         'Get ENS registration and renewal pricing for a name',
@@ -318,7 +319,7 @@ export function registerEnsTools(server) {
             name: z.string().describe('The name to get pricing for (without .eth suffix)'),
             years: z.number().min(1).max(10).default(1).describe('Number of years'),
         },
-        async ({ name, years }) => {
+        withLogging('ens_get_pricing', async ({ name, years }) => {
             try {
                 const label = name.toLowerCase().replace(/\.eth$/, '');
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
@@ -340,7 +341,7 @@ export function registerEnsTools(server) {
                     note: premium > 0n ? 'This name has a premium due to recent expiration' : undefined,
                 });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     // ==================== CHAIN-SPECIFIC QUERY TOOLS ====================
 
@@ -350,7 +351,7 @@ export function registerEnsTools(server) {
             name: z.string().describe('The .eth name'),
             key: z.string().describe('The text record key (e.g. avatar, twitter, github, url, description, email)'),
         },
-        async ({ name, key }) => {
+        withLogging('ens_get_text_record', async ({ name, key }) => {
             try {
                 const normalizedName = normalize(name);
                 const node = namehash(normalizedName);
@@ -367,12 +368,12 @@ export function registerEnsTools(server) {
 
                 return mcpResponse({ name: normalizedName, key, value: value || null });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     server.tool('ens_get_contenthash',
         'Get the contenthash (IPFS/IPNS/Swarm) from an .eth name',
         { name: z.string().describe('The .eth name') },
-        async ({ name }) => {
+        withLogging('ens_get_contenthash', async ({ name }) => {
             try {
                 const normalizedName = normalize(name);
                 const node = namehash(normalizedName);
@@ -392,7 +393,7 @@ export function registerEnsTools(server) {
                     contenthash: hash && hash !== '0x' ? hash : null,
                 });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     // ==================== TRANSACTION TOOLS ====================
 
@@ -405,7 +406,7 @@ export function registerEnsTools(server) {
             secret: z.string().optional().describe('32-byte hex secret (optional, will be generated if not provided)'),
             setReverseRecord: z.boolean().default(true).describe('Set this name as primary for the owner'),
         },
-        async ({ name, owner, years, secret, setReverseRecord }) => {
+        withLogging('ens_build_commit_tx', async ({ name, owner, years, secret, setReverseRecord }) => {
             try {
                 const label = name.toLowerCase().replace(/\.eth$/, '');
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
@@ -446,7 +447,7 @@ export function registerEnsTools(server) {
                     note: 'After executing this transaction, wait at least 60 seconds before calling ens_build_register_tx with the same secret',
                 });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     server.tool('ens_build_register_tx',
         'Build the register transaction (step 2 of 2-step ENS registration). Must be called 60+ seconds after commit.',
@@ -457,7 +458,7 @@ export function registerEnsTools(server) {
             secret: z.string().describe('The same 32-byte hex secret used in the commit step'),
             setReverseRecord: z.boolean().default(true),
         },
-        async ({ name, owner, years, secret, setReverseRecord }) => {
+        withLogging('ens_build_register_tx', async ({ name, owner, years, secret, setReverseRecord }) => {
             try {
                 const label = name.toLowerCase().replace(/\.eth$/, '');
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
@@ -497,7 +498,7 @@ export function registerEnsTools(server) {
                     note: 'Send this transaction with the specified ETH value. Excess ETH will be refunded.',
                 });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     server.tool('ens_build_renew_tx',
         'Build a transaction to renew an existing .eth name. Returns unsigned tx data.',
@@ -505,7 +506,7 @@ export function registerEnsTools(server) {
             name: z.string().describe('The name to renew (without .eth suffix)'),
             years: z.number().min(1).max(10).default(1),
         },
-        async ({ name, years }) => {
+        withLogging('ens_build_renew_tx', async ({ name, years }) => {
             try {
                 const label = name.toLowerCase().replace(/\.eth$/, '');
                 const duration = BigInt(years) * SECONDS_PER_YEAR;
@@ -535,7 +536,7 @@ export function registerEnsTools(server) {
                     note: 'Send this transaction with the specified ETH value. Excess ETH will be refunded.',
                 });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     server.tool('ens_build_set_target_address_tx',
         'Build a transaction to set the ETH address for an .eth name. Returns unsigned tx data.',
@@ -543,7 +544,7 @@ export function registerEnsTools(server) {
             name: z.string().describe('The .eth name'),
             address: z.string().describe('The target Ethereum address'),
         },
-        async ({ name, address }) => {
+        withLogging('ens_build_set_target_address_tx', async ({ name, address }) => {
             try {
                 const normalizedName = normalize(name);
                 const node = namehash(normalizedName);
@@ -566,12 +567,12 @@ export function registerEnsTools(server) {
                     note: 'Sign and send this transaction to update the address record',
                 });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     server.tool('ens_build_set_default_name_tx',
         'Build a transaction to set a .eth name as the primary name for the sender. Returns unsigned tx data.',
         { name: z.string().describe('The .eth name to set as primary') },
-        async ({ name }) => {
+        withLogging('ens_build_set_default_name_tx', async ({ name }) => {
             try {
                 const normalizedName = normalize(name);
 
@@ -588,7 +589,7 @@ export function registerEnsTools(server) {
                     note: 'Sign and send this transaction to set your primary ENS name. The sender address must be the target of this name.',
                 });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 
     server.tool('ens_build_set_metadata_tx',
         'Build a transaction to set text records or contenthash on an .eth name. Returns unsigned tx data.',
@@ -597,7 +598,7 @@ export function registerEnsTools(server) {
             key: z.string().describe('The record key (e.g. avatar, twitter, github, url, description, email, contenthash)'),
             value: z.string().describe('The value to set'),
         },
-        async ({ name, key, value }) => {
+        withLogging('ens_build_set_metadata_tx', async ({ name, key, value }) => {
             try {
                 const normalizedName = normalize(name);
                 const node = namehash(normalizedName);
@@ -629,5 +630,5 @@ export function registerEnsTools(server) {
                     note: `Sign and send this transaction to set the ${key} record`,
                 });
             } catch (e) { return mcpErrorResponse(e, 'ens'); }
-        });
+        }));
 }
