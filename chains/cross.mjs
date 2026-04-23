@@ -97,7 +97,9 @@ export function registerCrossChainTools(server) {
                         const { createPublicClient, http } = await import('viem');
                         const { namehash, normalize } = await import('viem/ens');
                         const { base } = await import('viem/chains');
-                        const client = createPublicClient({ chain: base, transport: http(process.env.BASE_RPC_URL || 'https://mainnet.base.org') });
+                        const baseRpc = process.env.BASE_RPC_URL;
+                        if (!baseRpc) throw new Error('BASE_RPC_URL is not configured');
+                        const client = createPublicClient({ chain: base, transport: http(baseRpc) });
                         const normalizedName = normalize(name);
                         const node = namehash(normalizedName);
                         const BASE_REGISTRY = '0xB94704422c2a1E396835A571837Aa5AE53285a95';
@@ -225,7 +227,9 @@ export function registerCrossChainTools(server) {
                         const { createPublicClient, http } = await import('viem');
                         const { namehash } = await import('viem/ens');
                         const { base } = await import('viem/chains');
-                        const client = createPublicClient({ chain: base, transport: http(process.env.BASE_RPC_URL || 'https://mainnet.base.org') });
+                        const baseRpc = process.env.BASE_RPC_URL;
+                        if (!baseRpc) throw new Error('BASE_RPC_URL is not configured');
+                        const client = createPublicClient({ chain: base, transport: http(baseRpc) });
                         const reverseLabel = address.toLowerCase().slice(2);
                         const reverseNode = namehash(`${reverseLabel}.addr.reverse`);
                         const L2_RESOLVER = '0x426fA03fB86E510d0Dd9F70335Cf102a98b10875';
