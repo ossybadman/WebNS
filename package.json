@@ -1,7 +1,7 @@
 {
-  "name": "webns",
+  "name": "web3ns",
   "version": "1.0.0",
-  "description": "Multi-chain naming service MCP server - SuiNS, ENS, SNS, Aptos Names, Basenames",
+  "description": "Web 3 Name Service - multi-chain naming MCP server for SuiNS, ENS, SNS, Aptos Names, and Basenames",
   "type": "module",
   "main": "index.mjs",
   "private": true,

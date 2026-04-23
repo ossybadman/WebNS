@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * webns - Multi-chain Naming Service MCP Server
+ * Web3NS - Web 3 Name Service MCP Server
  *
  * Unified MCP server for blockchain naming services:
  * - SuiNS (.sui) - 17 tools
@@ -26,7 +26,7 @@ import { registerAptTools } from './chains/apt.mjs';
 import { registerBaseTools } from './chains/base.mjs';
 import { registerCrossChainTools } from './chains/cross.mjs';
 
-const SERVER_NAME = 'webns';
+const SERVER_NAME = 'Web3NS';
 const SERVER_VERSION = '1.0.0';
 
 /**
